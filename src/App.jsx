@@ -1,0 +1,1283 @@
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInWithCustomToken, signInAnonymously } from 'firebase/auth';
+import { 
+  getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, 
+  deleteDoc, addDoc, query, getDocs, where 
+} from 'firebase/firestore';
+import { 
+  ShoppingBag, User, MapPin, Info, Phone, HelpCircle, 
+  Package, LayoutDashboard, LogOut, X, Plus, Trash2, Edit2, Check, Users, CreditCard, Settings
+} from 'lucide-react';
+
+// ==========================================
+// CONFIGURACIÓN DE FIREBASE Y ENTORNO
+// ==========================================
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'perfume-store-app';
+const firebaseConfig = {
+  apiKey: "AIzaSyDm-rfNaYMRxdOFjH0oTdUuspAe4WSf5CU",
+  authDomain: "perfumeria-3cd1c.firebaseapp.com",
+  projectId: "perfumeria-3cd1c",
+  storageBucket: "perfumeria-3cd1c.firebasestorage.app",
+  messagingSenderId: "547160854449",
+  appId: "1:547160854449:web:d794926d600002d1597790",
+  measurementId: "G-PXKBW9NZ6Z"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// ==========================================
+// CONFIGURACIÓN DE EMAILJS (API DIRECTA)
+// ==========================================
+const EMAILJS_SERVICE_ID = "service_flg76cj";
+const EMAILJS_TEMPLATE_ID = "template_otnza77";
+const EMAILJS_PUBLIC_KEY = "52ikRo80iqzF-e_Dx";
+
+const enviarCorreoNotificacion = async (nombreUsuario, correoUsuario, tipo, detallesExtra = "") => {
+  const templateParams = {
+    to_name: nombreUsuario,
+    to_email: correoUsuario,
+    message_type: tipo,
+    details: detallesExtra
+  };
+
+  try {
+    const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id: EMAILJS_SERVICE_ID,
+        template_id: EMAILJS_TEMPLATE_ID,
+        user_id: EMAILJS_PUBLIC_KEY,
+        template_params: templateParams
+      })
+    });
+    
+    if (response.ok) {
+      console.log(`Correo de [${tipo}] enviado correctamente a ${correoUsuario}`);
+    } else {
+      console.error("Fallo al enviar el correo", await response.text());
+    }
+  } catch (err) {
+    console.error("Error de red al intentar enviar el correo", err);
+  }
+};
+
+// ==========================================
+// COMPONENTES UI MINIMALISTAS (BLANCO Y NEGRO)
+// ==========================================
+const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }) => {
+  const baseStyle = "px-6 py-2 uppercase tracking-widest text-sm font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed";
+  const variants = {
+    primary: "bg-black text-white border border-black hover:bg-white hover:text-black",
+    secondary: "bg-white text-black border border-black hover:bg-black hover:text-white",
+    danger: "bg-white text-black border-2 border-dashed border-black hover:bg-black hover:text-white"
+  };
+  
+  return (
+    <button type={type} onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>
+      {children}
+    </button>
+  );
+};
+
+const Input = ({ label, type = 'text', value, onChange, required = false, className = '' }) => (
+  <div className={`flex flex-col ${className}`}>
+    <label className="text-xs uppercase tracking-widest mb-1 font-bold">{label}</label>
+    <input 
+      type={type} 
+      value={value} 
+      onChange={onChange} 
+      required={required}
+      className="border-b border-black bg-transparent py-2 outline-none focus:border-b-4 transition-all duration-200 rounded-none"
+    />
+  </div>
+);
+
+const Modal = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-white/90 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white border-4 border-black w-full max-w-md p-6 relative shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] max-h-[90vh] overflow-y-auto">
+        <button onClick={onClose} className="absolute top-4 right-4 hover:rotate-90 transition-transform">
+          <X size={24} />
+        </button>
+        <h2 className="text-2xl font-black uppercase tracking-tighter mb-6">{title}</h2>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// COMPONENTE PRINCIPAL DE LA APLICACIÓN
+// ==========================================
+export default function App() {
+  const [sysReady, setSysReady] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null); // Usuario de la tienda
+  const [view, setView] = useState('login'); // login, home, catalog, inventory, orders, locations, about, contact, faq
+  const [cart, setCart] = useState([]);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  // Estados de Base de Datos
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [users, setUsers] = useState([]);
+
+  // Rutas de Firestore (Estrictas según reglas del entorno)
+  const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'store_users');
+  const productsRef = collection(db, 'artifacts', appId, 'public', 'data', 'store_products');
+  const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'store_orders');
+
+  // Inicialización del sistema
+  useEffect(() => {
+    const initSystem = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined') {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+        setSysReady(true);
+      } catch (error) {
+        console.error("Error de inicialización:", error);
+      }
+    };
+    initSystem();
+  }, []);
+
+  // Suscripciones a la base de datos en tiempo real
+  useEffect(() => {
+    if (!sysReady) return;
+
+    const unsubProducts = onSnapshot(productsRef, (snap) => {
+      setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => console.error("Error cargando productos:", err));
+
+    const unsubOrders = onSnapshot(ordersRef, (snap) => {
+      setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => console.error("Error cargando pedidos:", err));
+
+    const unsubUsers = onSnapshot(usersRef, (snap) => {
+      const usersData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setUsers(usersData);
+      
+      // Actualizar los datos del usuario actual en tiempo real si modifica su perfil o rol
+      if (currentUser) {
+        const updated = usersData.find(u => u.id === currentUser.id);
+        if (updated) setCurrentUser(updated);
+      }
+    }, (err) => console.error("Error cargando usuarios:", err));
+
+    return () => { unsubProducts(); unsubOrders(); unsubUsers(); };
+  }, [sysReady, currentUser]);
+
+  // Creación automática del Administrador Maestro
+  useEffect(() => {
+    const seedAdmin = async () => {
+      if (!sysReady) return;
+      try {
+        const q = query(usersRef, where("email", "==", "erickztgt800@gmail.com"));
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          await addDoc(usersRef, {
+            email: "erickztgt800@gmail.com",
+            name: "Erick Gómez Tejeda",
+            password: "admin", // Contraseña por defecto
+            role: "admin",
+            createdAt: new Date().toISOString(),
+            addresses: [],
+            savedCards: []
+          });
+          console.log("Admin maestro creado.");
+        }
+      } catch (err) {
+        console.error("Error validando admin maestro", err);
+      }
+    };
+    seedAdmin();
+  }, [sysReady]);
+
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000); // 4 segundos para que dé tiempo a leer
+  };
+
+  const handleLogin = (userObj) => {
+    setCurrentUser(userObj);
+    setView('home');
+    showToast(`Bienvenido, ${userObj.name}`);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setCart([]);
+    setView('login');
+  };
+
+  const addToCart = (product) => {
+    if (product.stock <= 0) {
+      showToast("Producto agotado");
+      return;
+    }
+    const existing = cart.find(item => item.id === product.id);
+    if (existing) {
+      if (existing.quantity >= product.stock) {
+        showToast("No hay más stock disponible");
+        return;
+      }
+      setCart(cart.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
+    } else {
+      setCart([...cart, { ...product, quantity: 1 }]);
+    }
+    showToast("Añadido al carrito");
+  };
+
+  const removeFromCart = (productId) => {
+    setCart(cart.filter(item => item.id !== productId));
+  };
+
+  const getCartTotal = () => cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+
+  if (!sysReady) return <div className="min-h-screen flex items-center justify-center bg-white text-black font-black uppercase tracking-widest">Inicializando Sistema...</div>;
+
+  return (
+    <div className="min-h-screen bg-white text-black font-sans selection:bg-black selection:text-white">
+      {/* Sistema de Alertas / Toast */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-black text-white px-6 py-3 font-bold uppercase tracking-widest border-2 border-white shadow-[5px_5px_0px_0px_rgba(255,255,255,1)] text-center w-max max-w-full">
+          {toastMessage}
+        </div>
+      )}
+
+      {/* Navegación Principal */}
+      {currentUser && (
+        <nav className="border-b-4 border-black p-4 sticky top-0 bg-white z-40">
+          <div className="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-4">
+            <div className="text-2xl font-black uppercase tracking-tighter cursor-pointer" onClick={() => setView('home')}>
+              NOIR <span className="font-light">PARFUMS</span>
+            </div>
+            
+            <div className="flex flex-wrap gap-4 md:gap-8 text-xs font-bold uppercase tracking-widest items-center">
+              <button onClick={() => setView('home')} className={`hover:underline underline-offset-4 ${view === 'home' ? 'underline' : ''}`}>Inicio</button>
+              <button onClick={() => setView('catalog')} className={`hover:underline underline-offset-4 ${view === 'catalog' ? 'underline' : ''}`}>Catálogo</button>
+              
+              {/* Opciones solo para Administrador */}
+              {currentUser.role === 'admin' && (
+                <>
+                  <button onClick={() => setView('inventory')} className={`hover:underline underline-offset-4 ${view === 'inventory' ? 'underline' : ''} text-gray-500 flex items-center gap-1`}>
+                    <LayoutDashboard size={14} /> Inventario
+                  </button>
+                  <button onClick={() => setView('users')} className={`hover:underline underline-offset-4 ${view === 'users' ? 'underline' : ''} text-gray-500 flex items-center gap-1`}>
+                    <Users size={14} /> Usuarios
+                  </button>
+                </>
+              )}
+
+              <button onClick={() => setView('orders')} className={`hover:underline underline-offset-4 ${view === 'orders' ? 'underline' : ''}`}>Mis Pedidos</button>
+              
+              <div className="group relative">
+                <button className="hover:underline underline-offset-4 flex items-center gap-1">Nosotros</button>
+                <div className="absolute hidden group-hover:flex flex-col bg-white border-2 border-black p-2 mt-2 w-40 z-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                  <button onClick={() => setView('about')} className="text-left p-2 hover:bg-black hover:text-white transition-colors">Quiénes Somos</button>
+                  <button onClick={() => setView('contact')} className="text-left p-2 hover:bg-black hover:text-white transition-colors">Contacto</button>
+                  <button onClick={() => setView('locations')} className="text-left p-2 hover:bg-black hover:text-white transition-colors">Sucursales</button>
+                  <button onClick={() => setView('faq')} className="text-left p-2 hover:bg-black hover:text-white transition-colors">FAQ</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6">
+              <button onClick={() => setView('cart')} className="relative flex items-center hover:scale-110 transition-transform">
+                <ShoppingBag size={24} />
+                {cart.length > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-black text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full">
+                    {cart.reduce((acc, item) => acc + item.quantity, 0)}
+                  </span>
+                )}
+              </button>
+              <div className="flex items-center gap-2 border-l-2 border-black pl-4">
+                <div className="text-right hidden md:block cursor-pointer hover:underline group" onClick={() => setView('profile')}>
+                  <div className="text-xs font-black uppercase flex items-center justify-end gap-1 group-hover:text-gray-500 transition-colors">
+                    <User size={12}/> {currentUser.name}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-widest text-gray-500">{currentUser.role}</div>
+                </div>
+                <button onClick={handleLogout} className="hover:text-gray-500 transition-colors ml-2" title="Cerrar Sesión">
+                  <LogOut size={20} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </nav>
+      )}
+
+      {/* Contenedor Principal de Vistas */}
+      <main className="max-w-6xl mx-auto p-4 py-8">
+        {!currentUser ? (
+          <AuthView onLogin={handleLogin} users={users} usersRef={usersRef} showToast={showToast} />
+        ) : (
+          <>
+            {view === 'home' && <HomeView setView={setView} />}
+            {view === 'catalog' && <CatalogView products={products} addToCart={addToCart} />}
+            {view === 'inventory' && currentUser.role === 'admin' && <InventoryView products={products} productsRef={productsRef} showToast={showToast} />}
+            {view === 'users' && currentUser.role === 'admin' && <UsersView users={users} usersRef={usersRef} showToast={showToast} currentUser={currentUser} />}
+            {view === 'profile' && <ProfileView currentUser={currentUser} usersRef={usersRef} showToast={showToast} />}
+            {view === 'cart' && <CartView cart={cart} removeFromCart={removeFromCart} total={getCartTotal()} setView={setView} currentUser={currentUser} ordersRef={ordersRef} products={products} productsRef={productsRef} showToast={showToast} setCart={setCart} usersRef={usersRef} />}
+            {view === 'orders' && <OrdersView orders={orders} currentUser={currentUser} ordersRef={ordersRef} showToast={showToast} setCart={setCart} setView={setView} products={products} productsRef={productsRef} />}
+            {view === 'about' && <AboutView />}
+            {view === 'contact' && <ContactView />}
+            {view === 'locations' && <LocationsView />}
+            {view === 'faq' && <FaqView />}
+          </>
+        )}
+      </main>
+      
+      {/* Footer Minimalista */}
+      {currentUser && (
+        <footer className="border-t-4 border-black mt-20 py-12 text-center">
+          <div className="text-3xl font-black uppercase tracking-tighter mb-4">NOIR</div>
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
+            La esencia de la elegancia en blanco y negro. &copy; 2026.
+          </p>
+        </footer>
+      )}
+    </div>
+  );
+}
+
+// ==========================================
+// VISTA: AUTENTICACIÓN (LOGIN/REGISTRO)
+// ==========================================
+const AuthView = ({ onLogin, users, usersRef, showToast }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [step, setStep] = useState('form'); // 'form' | 'verify'
+  const [verificationCode, setVerificationCode] = useState('');
+  const [inputCode, setInputCode] = useState('');
+  
+  const [formData, setFormData] = useState({ email: '', password: '', name: '', reqAdmin: false });
+  const [error, setError] = useState('');
+
+  const handleSubmitForm = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    if (isLogin) {
+      // Login
+      const user = users.find(u => u.email === formData.email && u.password === formData.password);
+      if (user) {
+        onLogin(user);
+      } else {
+        setError('Credenciales incorrectas o usuario no encontrado.');
+      }
+    } else {
+      // Registro - Paso 1: Validación
+      if (users.find(u => u.email === formData.email)) {
+        setError('El correo ya está registrado.');
+        return;
+      }
+      
+      // Generar código aleatorio de 4 dígitos
+      const code = Math.floor(1000 + Math.random() * 9000).toString();
+      setVerificationCode(code);
+      setStep('verify');
+      
+      // Enviar correo real usando la API de EmailJS configurada
+      enviarCorreoNotificacion(
+        formData.name || 'Usuario', 
+        formData.email, 
+        "Código de Verificación", 
+        `Tu código para confirmar tu cuenta en NOIR PARFUMS es: ${code}`
+      );
+      
+      showToast(`¡Código enviado! Revisa tu correo: ${formData.email}`);
+    }
+  };
+
+  const handleVerifyCode = async (e) => {
+    e.preventDefault();
+    if (inputCode !== verificationCode) {
+      setError('Código incorrecto. Intenta nuevamente.');
+      return;
+    }
+
+    // Paso 2: Crear el usuario en la BD
+    const newUser = {
+      email: formData.email,
+      password: formData.password,
+      name: formData.name,
+      role: formData.reqAdmin ? 'admin' : 'customer',
+      createdAt: new Date().toISOString(),
+      addresses: [],
+      savedCards: []
+    };
+
+    try {
+      const docRef = await addDoc(usersRef, newUser);
+      onLogin({ id: docRef.id, ...newUser });
+    } catch (err) {
+      setError('Error al crear la cuenta.');
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto mt-20 p-8 border-4 border-black shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] bg-white">
+      <h1 className="text-4xl font-black uppercase tracking-tighter text-center mb-8">
+        {step === 'verify' ? 'Verificación' : (isLogin ? 'Acceso' : 'Registro')}
+      </h1>
+      
+      {error && <div className="mb-6 p-4 border-2 border-black bg-black text-white text-xs font-bold uppercase">{error}</div>}
+      
+      {step === 'form' ? (
+        <form onSubmit={handleSubmitForm} className="space-y-6">
+          {!isLogin && (
+            <Input label="Nombre Completo" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+          )}
+          <Input label="Correo Electrónico" type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+          <Input label="Contraseña" type="password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+          
+          {!isLogin && (
+            <label className="flex items-center space-x-2 cursor-pointer mt-4 group">
+              <input type="checkbox" className="appearance-none w-5 h-5 border-2 border-black checked:bg-black cursor-pointer transition-colors" checked={formData.reqAdmin} onChange={e => setFormData({...formData, reqAdmin: e.target.checked})} />
+              <span className="text-xs uppercase font-bold tracking-widest text-gray-500 group-hover:text-black">Solicitar rol de Administrador</span>
+            </label>
+          )}
+
+          <Button type="submit" className="w-full text-lg py-4 mt-8">{isLogin ? 'Entrar' : 'Continuar'}</Button>
+        </form>
+      ) : (
+        <form onSubmit={handleVerifyCode} className="space-y-6 text-center">
+          <p className="text-sm font-bold uppercase text-gray-600 mb-6">Hemos enviado un código a {formData.email}.</p>
+          <Input label="Código de 4 dígitos" type="text" required value={inputCode} onChange={e => setInputCode(e.target.value)} className="text-center text-2xl tracking-[1em] font-black" />
+          <Button type="submit" className="w-full text-lg py-4 mt-8">Confirmar y Crear Cuenta</Button>
+          <button type="button" onClick={() => setStep('form')} className="text-xs uppercase tracking-widest font-bold hover:underline mt-4 block w-full">Volver</button>
+        </form>
+      )}
+      
+      {step === 'form' && (
+        <div className="mt-8 text-center border-t-2 border-black pt-6">
+          <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-xs uppercase tracking-widest font-bold hover:underline underline-offset-4">
+            {isLogin ? '¿No tienes cuenta? Regístrate aquí' : '¿Ya tienes cuenta? Inicia sesión'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// VISTA: INICIO
+// ==========================================
+const HomeView = ({ setView }) => (
+  <div className="flex flex-col items-center justify-center py-20 text-center space-y-12">
+    <div className="space-y-4 max-w-2xl">
+      <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter leading-none">Puro.<br/>Intenso.<br/>Noir.</h1>
+      <p className="text-sm md:text-base font-bold uppercase tracking-widest text-gray-600 pt-8">
+        Descubre nuestra colección exclusiva de fragancias minimalistas. Sin distracciones, solo esencia.
+      </p>
+    </div>
+    
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mt-12">
+      <div 
+        onClick={() => setView('catalog')}
+        className="group border-4 border-black p-12 cursor-pointer hover:bg-black hover:text-white transition-colors duration-500 flex flex-col items-center justify-center aspect-square"
+      >
+        <Package size={48} className="mb-6 group-hover:scale-110 transition-transform" />
+        <h2 className="text-2xl font-black uppercase tracking-widest">Ver Catálogo</h2>
+      </div>
+      <div 
+        onClick={() => setView('locations')}
+        className="group border-4 border-black p-12 cursor-pointer hover:bg-black hover:text-white transition-colors duration-500 flex flex-col items-center justify-center aspect-square"
+      >
+        <MapPin size={48} className="mb-6 group-hover:scale-110 transition-transform" />
+        <h2 className="text-2xl font-black uppercase tracking-widest">Sucursales</h2>
+      </div>
+    </div>
+  </div>
+);
+
+// ==========================================
+// VISTA: CATÁLOGO
+// ==========================================
+const CatalogView = ({ products, addToCart }) => (
+  <div>
+    <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 inline-block">Catálogo</h1>
+    
+    {products.length === 0 ? (
+      <div className="text-center py-20 border-2 border-dashed border-black font-bold uppercase tracking-widest">No hay productos disponibles por el momento.</div>
+    ) : (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+        {products.map(product => (
+          <div key={product.id} className="border-4 border-black group bg-white flex flex-col relative shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]">
+            <div className="absolute top-4 right-4 bg-black text-white text-[10px] font-bold px-2 py-1 uppercase tracking-widest z-10">
+              Stock: {product.stock}
+            </div>
+            
+            <div className="aspect-square bg-gray-100 border-b-4 border-black overflow-hidden relative flex items-center justify-center">
+              {product.imageUrl ? (
+                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover filter grayscale contrast-125 group-hover:scale-105 transition-transform duration-500" onError={(e) => { e.target.onerror = null; e.target.src="https://placehold.co/400x400/eeeeee/000000?text=NOIR" }}/>
+              ) : (
+                <div className="text-4xl font-black text-gray-300 uppercase tracking-tighter">NOIR</div>
+              )}
+            </div>
+            
+            <div className="p-6 flex flex-col flex-grow">
+              <div className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">{product.brand}</div>
+              <h3 className="text-xl font-black uppercase tracking-tight mb-2">{product.name}</h3>
+              <div className="text-xs uppercase font-semibold mb-4 border-l-2 border-black pl-2">{product.olfactoryFamily} | Cod: {product.code}</div>
+              <div className="text-2xl font-black mt-auto">${parseFloat(product.price).toFixed(2)}</div>
+            </div>
+            
+            <button 
+              onClick={() => addToCart(product)}
+              disabled={product.stock <= 0}
+              className={`w-full py-4 text-sm font-bold uppercase tracking-widest border-t-4 border-black transition-colors ${product.stock > 0 ? 'bg-white text-black hover:bg-black hover:text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+            >
+              {product.stock > 0 ? 'Añadir al Carrito' : 'Agotado'}
+            </button>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+// ==========================================
+// VISTA: INVENTARIO (SOLO ADMIN)
+// ==========================================
+const InventoryView = ({ products, productsRef, showToast }) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [formData, setFormData] = useState({
+    name: '', code: '', brand: '', price: '', stock: '', olfactoryFamily: '', imageUrl: ''
+  });
+
+  const resetForm = () => {
+    setFormData({ name: '', code: '', brand: '', price: '', stock: '', olfactoryFamily: '', imageUrl: '' });
+    setEditingId(null);
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (product) => {
+    setFormData({ ...product });
+    setEditingId(product.id);
+    setIsModalOpen(true);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 400;
+        const scaleSize = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7); 
+        setFormData(prev => ({ ...prev, imageUrl: dataUrl }));
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const productData = {
+      ...formData,
+      price: parseFloat(formData.price),
+      stock: parseInt(formData.stock, 10)
+    };
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(productsRef, editingId), productData);
+        showToast("Producto actualizado");
+      } else {
+        await addDoc(productsRef, productData);
+        showToast("Producto añadido");
+      }
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      showToast("Error al guardar producto");
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteDoc(doc(productsRef, id));
+      showToast("Producto eliminado");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-4 justify-between items-end mb-12 border-b-8 border-black pb-4">
+        <h1 className="text-4xl font-black uppercase tracking-tighter">Inventario</h1>
+        <Button onClick={openAddModal} className="flex items-center gap-2"><Plus size={16} /> Nuevo Producto</Button>
+      </div>
+
+      <div className="overflow-x-auto border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-black text-white text-xs uppercase tracking-widest">
+              <th className="p-4 border-r border-gray-700">Código</th>
+              <th className="p-4 border-r border-gray-700">Producto</th>
+              <th className="p-4 border-r border-gray-700">Marca / Familia</th>
+              <th className="p-4 border-r border-gray-700">Precio</th>
+              <th className="p-4 border-r border-gray-700">Stock</th>
+              <th className="p-4 text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map(p => (
+              <tr key={p.id} className="border-b-2 border-black hover:bg-gray-50 transition-colors">
+                <td className="p-4 font-bold text-xs">{p.code}</td>
+                <td className="p-4 font-black uppercase">{p.name}</td>
+                <td className="p-4 text-xs uppercase"><span className="font-bold">{p.brand}</span> <br/> {p.olfactoryFamily}</td>
+                <td className="p-4 font-black">${p.price}</td>
+                <td className="p-4">
+                  <span className={`px-2 py-1 text-xs font-bold text-white ${p.stock > 5 ? 'bg-black' : 'bg-gray-500'}`}>
+                    {p.stock}
+                  </span>
+                </td>
+                <td className="p-4 flex justify-center gap-2">
+                  <button onClick={() => openEditModal(p)} className="p-2 border-2 border-black hover:bg-black hover:text-white transition-colors"><Edit2 size={16} /></button>
+                  <button onClick={() => handleDelete(p.id)} className="p-2 border-2 border-black hover:bg-black hover:text-white transition-colors"><Trash2 size={16} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingId ? 'Editar Producto' : 'Nuevo Producto'}>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input label="Código" required value={formData.code} onChange={e => setFormData({...formData, code: e.target.value})} />
+          <Input label="Nombre" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Marca" required value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} />
+            <Input label="Familia Olfativa" required value={formData.olfactoryFamily} onChange={e => setFormData({...formData, olfactoryFamily: e.target.value})} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Precio" type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+            <Input label="Stock" type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} />
+          </div>
+          
+          <div className="flex flex-col border-2 border-dashed border-black p-4 text-center hover:bg-gray-50 transition-colors relative">
+            <label className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
+              <span className="text-xs font-bold uppercase tracking-widest">
+                {formData.imageUrl ? 'Cambiar Imagen' : 'Subir Imagen del Producto'}
+              </span>
+              <span className="text-[10px] text-gray-500 uppercase mt-1">Explorar archivos</span>
+              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+              {formData.imageUrl && (
+                <img src={formData.imageUrl} alt="Preview" className="w-24 h-24 object-cover border-2 border-black mt-4 grayscale" />
+              )}
+            </label>
+          </div>
+
+          <Button type="submit" className="w-full mt-6">{editingId ? 'Guardar Cambios' : 'Añadir Producto'}</Button>
+        </form>
+      </Modal>
+    </div>
+  );
+};
+
+// ==========================================
+// VISTA: CARRITO Y CHECKOUT
+// ==========================================
+const CartView = ({ cart, removeFromCart, total, setView, currentUser, ordersRef, products, productsRef, showToast, setCart, usersRef }) => {
+  const defaultAddress = currentUser.addresses && currentUser.addresses.length > 0 ? currentUser.addresses[0] : { address: '', city: '', zip: '' };
+  
+  const [shippingInfo, setShippingInfo] = useState(defaultAddress);
+  const [paymentInfo, setPaymentInfo] = useState({ number: '', name: currentUser.name || '', expiry: '', cvv: '', saveCard: false });
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [useSavedCard, setUseSavedCard] = useState(''); 
+
+  const handleSelectSavedCard = (e) => {
+    const val = e.target.value;
+    setUseSavedCard(val);
+    if (val) {
+      const card = currentUser.savedCards.find(c => c.last4 === val);
+      if (card) setPaymentInfo({ number: `**** **** **** ${card.last4}`, name: card.name, expiry: card.expiry, cvv: '***', saveCard: false });
+    } else {
+      setPaymentInfo({ number: '', name: currentUser.name, expiry: '', cvv: '', saveCard: false });
+    }
+  };
+
+  const handleCheckout = async (e) => {
+    e.preventDefault();
+    
+    // Validación estricta de formato
+    if (!useSavedCard) {
+      if (paymentInfo.number.length !== 16) return showToast("El número de tarjeta debe tener 16 dígitos");
+      if (paymentInfo.expiry.length !== 5) return showToast("Fecha de vencimiento incompleta (MM/AA)");
+      if (paymentInfo.cvv.length !== 3) return showToast("El CVV debe tener 3 dígitos");
+    }
+
+    setIsCheckingOut(true);
+
+    try {
+      // 1. Validar Stock Final
+      for (const item of cart) {
+        const productInDb = products.find(p => p.id === item.id);
+        if (!productInDb || productInDb.stock < item.quantity) {
+          throw new Error(`Stock insuficiente para ${item.name}`);
+        }
+      }
+
+      // 2. Simular Procesamiento Bancario
+      showToast("Procesando pago con el banco...");
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // 3. Guardar tarjeta 
+      if (paymentInfo.saveCard && !useSavedCard) {
+        const last4 = paymentInfo.number.slice(-4);
+        const newCard = { last4, name: paymentInfo.name, expiry: paymentInfo.expiry };
+        const updatedCards = [...(currentUser.savedCards || []), newCard];
+        await updateDoc(doc(usersRef, currentUser.id), { savedCards: updatedCards });
+      }
+
+      // 4. Crear Pedido
+      const newOrder = {
+        userId: currentUser.email,
+        userName: currentUser.name,
+        items: cart,
+        total: total,
+        status: 'Pendiente',
+        date: new Date().toISOString(),
+        shippingInfo
+      };
+
+      await addDoc(ordersRef, newOrder);
+
+      // 5. Descontar Stock
+      for (const item of cart) {
+        const productInDb = products.find(p => p.id === item.id);
+        const newStock = productInDb.stock - item.quantity;
+        await updateDoc(doc(productsRef, item.id), { stock: newStock });
+      }
+
+      // 6. Enviar Correo Electrónico Real de Confirmación
+      const orderDetails = cart.map(item => `${item.quantity}x ${item.name}`).join(' | ');
+      enviarCorreoNotificacion(
+        currentUser.name, 
+        currentUser.email, 
+        "Confirmación de Pedido", 
+        `Tu pedido por un total de $${total.toFixed(2)} ha sido aprobado y registrado. Artículos: ${orderDetails}. ¡Gracias por confiar en NOIR!`
+      );
+
+      // 7. Limpiar y Redirigir
+      setCart([]);
+      showToast(`¡Pago aprobado! El recibo de compra ha sido enviado a tu correo.`);
+      setView('orders');
+
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || "Error al procesar la compra");
+    } finally {
+      setIsCheckingOut(false);
+    }
+  };
+
+  if (cart.length === 0) {
+    return (
+      <div className="text-center py-20">
+        <h1 className="text-4xl font-black uppercase tracking-tighter mb-6">Tu Carrito está vacío</h1>
+        <Button onClick={() => setView('catalog')}>Volver al Catálogo</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+      <div>
+        <h1 className="text-4xl font-black uppercase tracking-tighter mb-8 border-b-8 border-black pb-4">Carrito</h1>
+        <div className="space-y-4">
+          {cart.map(item => (
+            <div key={item.id} className="flex gap-4 border-4 border-black p-4 bg-white items-center shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]">
+               <div className="w-20 h-20 bg-gray-100 flex-shrink-0 flex items-center justify-center overflow-hidden border-2 border-black">
+                 {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover grayscale" alt={item.name} /> : <span className="text-[10px] font-black uppercase">NOIR</span>}
+               </div>
+               <div className="flex-grow">
+                 <h3 className="font-black uppercase text-lg leading-tight">{item.name}</h3>
+                 <div className="text-xs font-bold text-gray-500 uppercase">Cantidad: {item.quantity} | ${item.price} c/u</div>
+               </div>
+               <div className="text-xl font-black mr-4">${(item.price * item.quantity).toFixed(2)}</div>
+               <button onClick={() => removeFromCart(item.id)} className="p-2 hover:bg-black hover:text-white transition-colors border-2 border-transparent hover:border-black">
+                 <X size={20} />
+               </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-black text-white p-8 border-4 border-black shadow-[15px_15px_0px_0px_rgba(200,200,200,1)]">
+        <h2 className="text-2xl font-black uppercase tracking-widest mb-8 border-b-4 border-white pb-4">Checkout</h2>
+        <div className="flex justify-between items-center text-xl font-bold uppercase mb-8">
+          <span>Total a Pagar:</span>
+          <span className="text-3xl font-black">${total.toFixed(2)}</span>
+        </div>
+
+        <form onSubmit={handleCheckout} className="space-y-8 bg-white text-black p-6 border-4 border-transparent">
+          
+          <div>
+            <h3 className="text-lg font-black uppercase border-b-2 border-black pb-2 mb-4 flex items-center gap-2"><MapPin size={18}/> Dirección de Envío</h3>
+            <div className="space-y-4">
+              <Input label="Dirección Completa" required value={shippingInfo.address} onChange={e => setShippingInfo({...shippingInfo, address: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="Ciudad" required value={shippingInfo.city} onChange={e => setShippingInfo({...shippingInfo, city: e.target.value})} />
+                <Input label="Código Postal" required value={shippingInfo.zip} onChange={e => setShippingInfo({...shippingInfo, zip: e.target.value})} />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-black uppercase border-b-2 border-black pb-2 mb-4 flex items-center gap-2"><CreditCard size={18}/> Método de Pago</h3>
+            
+            {currentUser.savedCards && currentUser.savedCards.length > 0 && (
+              <div className="mb-4">
+                <label className="text-xs uppercase tracking-widest font-bold block mb-2">Usar tarjeta guardada</label>
+                <select 
+                  className="w-full border-2 border-black p-2 outline-none font-bold uppercase text-sm bg-transparent"
+                  value={useSavedCard}
+                  onChange={handleSelectSavedCard}
+                >
+                  <option value="">-- Ingresar nueva tarjeta --</option>
+                  {currentUser.savedCards.map((card, idx) => (
+                    <option key={idx} value={card.last4}>Visa/MC terminada en {card.last4}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className={`space-y-4 ${useSavedCard ? 'opacity-50 pointer-events-none' : ''}`}>
+              <Input label="Número de Tarjeta" required={!useSavedCard} value={paymentInfo.number} onChange={e => setPaymentInfo({...paymentInfo, number: e.target.value.replace(/\D/g, '').substring(0, 16)})} />
+              <Input label="Nombre en la Tarjeta" required={!useSavedCard} value={paymentInfo.name} onChange={e => setPaymentInfo({...paymentInfo, name: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="Vencimiento (MM/AA)" required={!useSavedCard} value={paymentInfo.expiry} onChange={e => {
+                  let val = e.target.value.replace(/\D/g, '').substring(0, 4);
+                  if (val.length >= 3) val = val.substring(0, 2) + '/' + val.substring(2, 4);
+                  setPaymentInfo({...paymentInfo, expiry: val});
+                }} />
+                <Input label="CVV" type="password" required={!useSavedCard} value={paymentInfo.cvv} onChange={e => setPaymentInfo({...paymentInfo, cvv: e.target.value.replace(/\D/g, '').substring(0, 3)})} />
+              </div>
+              {!useSavedCard && (
+                <label className="flex items-center space-x-2 cursor-pointer mt-4 group">
+                  <input type="checkbox" className="appearance-none w-5 h-5 border-2 border-black checked:bg-black cursor-pointer transition-colors" checked={paymentInfo.saveCard} onChange={e => setPaymentInfo({...paymentInfo, saveCard: e.target.checked})} />
+                  <span className="text-xs uppercase font-bold tracking-widest">Guardar tarjeta para futuras compras</span>
+                </label>
+              )}
+            </div>
+          </div>
+
+          <Button type="submit" disabled={isCheckingOut} className="w-full py-4 text-lg mt-6 bg-black text-white hover:bg-gray-800 border-none">
+            {isCheckingOut ? 'Procesando Pago...' : 'Confirmar y Pagar'}
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// VISTA: PEDIDOS Y GESTIÓN
+// ==========================================
+const OrdersView = ({ orders, currentUser, ordersRef, showToast, setCart, setView, products, productsRef }) => {
+  const displayOrders = currentUser.role === 'admin' 
+    ? orders 
+    : orders.filter(o => o.userId === currentUser.email);
+
+  const handleCancel = async (order) => {
+    try {
+      // 1. Marcar como cancelado
+      await updateDoc(doc(ordersRef, order.id), { status: 'Cancelado' });
+      
+      // 2. Liberar el stock (regresarlo al inventario)
+      for (const item of order.items) {
+        const productInDb = products.find(p => p.id === item.id);
+        if (productInDb) {
+          const newStock = productInDb.stock + item.quantity;
+          await updateDoc(doc(productsRef, item.id), { stock: newStock });
+        }
+      }
+
+      // 3. Enviar correo de cancelación
+      enviarCorreoNotificacion(
+        currentUser.name,
+        currentUser.email,
+        "Cancelación de Pedido",
+        `Tu pedido #${order.id.slice(0,8)} ha sido cancelado exitosamente. El monto no será cobrado y los artículos han regresado a nuestro inventario.`
+      );
+
+      showToast("Pedido cancelado y stock liberado");
+    } catch (err) {
+      console.error(err);
+      showToast("Error al cancelar el pedido");
+    }
+  };
+
+  const handleReorder = (order) => {
+    setCart(order.items);
+    setView('cart');
+    showToast("Artículos añadidos al carrito para volver a pedir");
+  };
+
+  const handleUpdateStatus = async (orderId, newStatus) => {
+     try {
+        await updateDoc(doc(ordersRef, orderId), { status: newStatus });
+        showToast(`Estado actualizado a ${newStatus}`);
+      } catch (err) {
+        console.error(err);
+      }
+  };
+
+  return (
+    <div>
+      <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 inline-block">
+        {currentUser.role === 'admin' ? 'Todos los Pedidos' : 'Mis Pedidos'}
+      </h1>
+
+      {displayOrders.length === 0 ? (
+        <div className="text-center py-20 border-2 border-dashed border-black font-bold uppercase tracking-widest">No hay pedidos registrados.</div>
+      ) : (
+        <div className="space-y-8">
+          {displayOrders.sort((a,b) => new Date(b.date) - new Date(a.date)).map(order => (
+            <div key={order.id} className="border-4 border-black p-6 bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex flex-wrap justify-between items-start mb-6 pb-6 border-b-2 border-black gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-widest text-gray-500">Pedido #{order.id.slice(0,8)}</div>
+                  <div className="text-sm font-bold mt-1">{new Date(order.date).toLocaleDateString()} - {new Date(order.date).toLocaleTimeString()}</div>
+                  {currentUser.role === 'admin' && <div className="text-xs uppercase bg-black text-white px-2 py-1 inline-block mt-2 font-bold">Cliente: {order.userName}</div>}
+                </div>
+                <div className="text-right">
+                  <div className={`text-xl font-black uppercase border-4 px-4 py-1 inline-block
+                    ${order.status === 'Pendiente' ? 'border-black' : order.status === 'Cancelado' ? 'border-gray-300 text-gray-400 line-through' : 'border-black bg-black text-white'}`}>
+                    {order.status}
+                  </div>
+                  <div className="text-3xl font-black mt-2">${parseFloat(order.total).toFixed(2)}</div>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <h4 className="text-xs font-bold uppercase tracking-widest mb-4">Artículos</h4>
+                <div className="space-y-2">
+                  {order.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-sm font-bold border-b border-gray-200 pb-2">
+                      <span className="uppercase">{item.quantity}x {item.name}</span>
+                      <span>${(item.price * item.quantity).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-4 pt-4 border-t-2 border-black">
+                {order.status === 'Pendiente' && currentUser.role !== 'admin' && (
+                  <Button variant="danger" onClick={() => handleCancel(order)}>Cancelar Pedido</Button>
+                )}
+                {currentUser.role !== 'admin' && (
+                  <Button variant="secondary" onClick={() => handleReorder(order)}>Volver a Pedir</Button>
+                )}
+                
+                {currentUser.role === 'admin' && order.status === 'Pendiente' && (
+                  <Button onClick={() => handleUpdateStatus(order.id, 'Enviado')}>Marcar como Enviado</Button>
+                )}
+                {currentUser.role === 'admin' && order.status !== 'Cancelado' && (
+                   <Button variant="danger" onClick={() => handleCancel(order)}>Forzar Cancelación</Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// VISTAS ESTÁTICAS E INFORMATIVAS
+// ==========================================
+const AboutView = () => (
+  <div className="max-w-3xl mx-auto space-y-12 py-12">
+    <h1 className="text-5xl font-black uppercase tracking-tighter text-center border-b-8 border-black pb-8">Nuestra Esencia</h1>
+    <p className="text-xl font-bold leading-relaxed text-justify">
+      NOIR NACE DE LA NECESIDAD DE VOLVER A LO BÁSICO. EN UN MUNDO SATURADO DE COLORES Y DISTRACCIONES, OFRECEMOS FRAGANCIAS PURAS, DONDE EL AROMA ES EL ÚNICO PROTAGONISTA.
+    </p>
+    <div className="border-4 border-black p-8 font-black uppercase text-2xl text-center shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] bg-white">
+      "No vendemos perfume. Vendemos actitud encapsulada en blanco y negro."
+    </div>
+  </div>
+);
+
+const ContactView = () => (
+  <div className="max-w-2xl mx-auto mt-12 border-4 border-black p-8 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white">
+    <h1 className="text-3xl font-black uppercase tracking-tighter mb-8 flex items-center gap-4 border-b-4 border-black pb-4"><Phone /> Contáctanos</h1>
+    <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); alert('Mensaje enviado (Simulación)'); }}>
+      <Input label="Nombre" required />
+      <Input label="Correo" type="email" required />
+      <div className="flex flex-col">
+        <label className="text-xs uppercase tracking-widest mb-1 font-bold">Mensaje</label>
+        <textarea required rows="4" className="border-b-2 border-black bg-transparent py-2 outline-none focus:border-b-4 transition-all duration-200 resize-none"></textarea>
+      </div>
+      <Button type="submit" className="w-full">Enviar Mensaje</Button>
+    </form>
+  </div>
+);
+
+const LocationsView = () => {
+  const sucursales = [
+    { name: 'Sucursal Centro', address: 'Calle Principal 123, Zona Centro, CDMX', hours: 'L-S 10:00 - 20:00' },
+    { name: 'Sucursal Norte', address: 'Plaza Norte 45, Local B, Monterrey', hours: 'L-D 11:00 - 21:00' },
+    { name: 'Sucursal Sur', address: 'Av. Sur 789, Col. Moderna, Guadalajara', hours: 'L-S 09:00 - 19:00' },
+    { name: 'Sucursal Este', address: 'Blvd. Este 101, Zona Hotelera, Cancún', hours: 'L-D 10:00 - 22:00' },
+    { name: 'Sucursal Oeste', address: 'Vía Oeste 202, Centro Comercial, Tijuana', hours: 'L-S 10:00 - 20:00' },
+  ];
+  return (
+    <div>
+       <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 inline-block">Nuestras Sucursales</h1>
+       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {sucursales.map((suc, idx) => (
+            <div key={idx} className="border-4 border-black p-6 hover:bg-black hover:text-white transition-colors group cursor-pointer bg-white shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:shadow-none">
+              <MapPin size={32} className="mb-4 group-hover:animate-bounce" />
+              <h3 className="text-xl font-black uppercase tracking-widest mb-2">{suc.name}</h3>
+              <p className="text-sm font-bold mb-4">{suc.address}</p>
+              <div className="text-xs uppercase tracking-widest border-t-2 border-current pt-4">Horario: {suc.hours}</div>
+            </div>
+          ))}
+       </div>
+    </div>
+  );
+}
+
+const FaqView = () => (
+  <div className="max-w-3xl mx-auto py-12">
+    <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 flex items-center gap-4"><HelpCircle size={40}/> Preguntas Frecuentes</h1>
+    <div className="space-y-6">
+      {[
+        { q: "¿Cuánto tarda el envío?", a: "Nuestros envíos tardan de 2 a 5 días hábiles a nivel nacional." },
+        { q: "¿Tienen devoluciones?", a: "Por higiene, solo aceptamos devoluciones si el producto llega dañado en su empaque original sellado." },
+        { q: "¿Son perfumes originales?", a: "Somos creadores. NOIR es una marca independiente de perfumería nicho." },
+        { q: "¿Puedo cancelar mi pedido?", a: "Puedes cancelar tu pedido desde la sección 'Mis Pedidos' siempre y cuando su estado sea 'Pendiente'." }
+      ].map((faq, idx) => (
+        <div key={idx} className="border-l-8 border-black pl-6 py-2 bg-white">
+          <h3 className="text-lg font-black uppercase tracking-tight mb-2">{faq.q}</h3>
+          <p className="font-bold text-gray-600">{faq.a}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+// ==========================================
+// NUEVA VISTA: GESTIÓN DE USUARIOS (SOLO ADMIN)
+// ==========================================
+const UsersView = ({ users, usersRef, showToast, currentUser }) => {
+  const handleToggleRole = async (user) => {
+    if (user.id === currentUser.id) {
+      showToast("No puedes cambiar tu propio rol.");
+      return;
+    }
+    const newRole = user.role === 'admin' ? 'customer' : 'admin';
+    try {
+      await updateDoc(doc(usersRef, user.id), { role: newRole });
+      showToast("Rol actualizado exitosamente");
+    } catch (err) {
+      console.error(err);
+      showToast("Error al cambiar rol");
+    }
+  };
+
+  return (
+    <div>
+      <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 inline-block">Gestión de Usuarios</h1>
+      <div className="overflow-x-auto border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-black text-white text-xs uppercase tracking-widest">
+              <th className="p-4 border-r border-gray-700">Nombre</th>
+              <th className="p-4 border-r border-gray-700">Correo Electrónico</th>
+              <th className="p-4 border-r border-gray-700">Fecha Registro</th>
+              <th className="p-4 border-r border-gray-700">Rol Actual</th>
+              <th className="p-4 text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id} className="border-b-2 border-black hover:bg-gray-50 transition-colors">
+                <td className="p-4 font-black uppercase">{u.name}</td>
+                <td className="p-4 font-bold text-xs">{u.email}</td>
+                <td className="p-4 text-xs font-bold">{new Date(u.createdAt).toLocaleDateString()}</td>
+                <td className="p-4">
+                  <span className={`px-2 py-1 text-xs font-bold uppercase text-white ${u.role === 'admin' ? 'bg-black' : 'bg-gray-500'}`}>
+                    {u.role}
+                  </span>
+                </td>
+                <td className="p-4 flex justify-center">
+                  <Button variant="secondary" onClick={() => handleToggleRole(u)} disabled={u.id === currentUser.id} className="text-[10px] py-1 px-3">
+                    Hacer {u.role === 'admin' ? 'Cliente' : 'Admin'}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// NUEVA VISTA: PERFIL DE USUARIO
+// ==========================================
+const ProfileView = ({ currentUser, usersRef, showToast }) => {
+  const [name, setName] = useState(currentUser.name || '');
+  const [newAddress, setNewAddress] = useState({ address: '', city: '', zip: '' });
+  
+  const handleUpdateName = async (e) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(usersRef, currentUser.id), { name });
+      showToast("Nombre actualizado");
+    } catch (err) {
+      console.error(err);
+      showToast("Error al actualizar perfil");
+    }
+  };
+
+  const handleAddAddress = async (e) => {
+    e.preventDefault();
+    try {
+      const addresses = currentUser.addresses || [];
+      await updateDoc(doc(usersRef, currentUser.id), { addresses: [...addresses, newAddress] });
+      setNewAddress({ address: '', city: '', zip: '' });
+      showToast("Dirección agregada");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteAddress = async (index) => {
+    try {
+      const addresses = [...(currentUser.addresses || [])];
+      addresses.splice(index, 1);
+      await updateDoc(doc(usersRef, currentUser.id), { addresses });
+      showToast("Dirección eliminada");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteCard = async (index) => {
+    try {
+      const savedCards = [...(currentUser.savedCards || [])];
+      savedCards.splice(index, 1);
+      await updateDoc(doc(usersRef, currentUser.id), { savedCards });
+      showToast("Tarjeta eliminada");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-12">
+      <h1 className="text-4xl font-black uppercase tracking-tighter border-b-8 border-black pb-4 flex items-center gap-4">
+        <Settings size={36} /> Mi Perfil
+      </h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Información Básica */}
+        <div className="border-4 border-black p-6 bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
+          <h2 className="text-2xl font-black uppercase tracking-widest mb-6 border-b-2 border-black pb-2">Datos Personales</h2>
+          <form onSubmit={handleUpdateName} className="space-y-4">
+            <div>
+              <label className="text-xs uppercase tracking-widest mb-1 font-bold text-gray-500 block">Correo (No modificable)</label>
+              <div className="font-bold border-b-2 border-gray-300 py-2">{currentUser.email}</div>
+            </div>
+            <Input label="Nombre de Usuario" required value={name} onChange={e => setName(e.target.value)} />
+            <Button type="submit" className="w-full">Guardar Cambios</Button>
+          </form>
+        </div>
+
+        {/* Tarjetas Guardadas */}
+        <div className="border-4 border-black p-6 bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
+          <h2 className="text-2xl font-black uppercase tracking-widest mb-6 border-b-2 border-black pb-2 flex items-center gap-2">
+            <CreditCard size={20}/> Tarjetas Guardadas
+          </h2>
+          {(!currentUser.savedCards || currentUser.savedCards.length === 0) ? (
+            <div className="text-sm font-bold uppercase text-gray-500">No tienes tarjetas guardadas.</div>
+          ) : (
+            <div className="space-y-4">
+              {currentUser.savedCards.map((card, idx) => (
+                <div key={idx} className="flex justify-between items-center border-2 border-black p-4">
+                  <div>
+                    <div className="font-black uppercase tracking-widest">**** **** **** {card.last4}</div>
+                    <div className="text-xs font-bold text-gray-500 uppercase">Vence: {card.expiry}</div>
+                  </div>
+                  <button onClick={() => handleDeleteCard(idx)} className="text-gray-500 hover:text-black transition-colors" title="Eliminar Tarjeta"><Trash2 size={18}/></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Direcciones */}
+      <div className="border-4 border-black p-6 bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
+        <h2 className="text-2xl font-black uppercase tracking-widest mb-6 border-b-2 border-black pb-2 flex items-center gap-2">
+          <MapPin size={20}/> Direcciones de Envío
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          
+          <div>
+            <h3 className="text-sm font-black uppercase mb-4">Añadir Dirección</h3>
+            <form onSubmit={handleAddAddress} className="space-y-4 border-r-0 md:border-r-2 border-black pr-0 md:pr-6">
+              <Input label="Calle y Número" required value={newAddress.address} onChange={e => setNewAddress({...newAddress, address: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="Ciudad" required value={newAddress.city} onChange={e => setNewAddress({...newAddress, city: e.target.value})} />
+                <Input label="C.P." required value={newAddress.zip} onChange={e => setNewAddress({...newAddress, zip: e.target.value})} />
+              </div>
+              <Button type="submit" variant="secondary" className="w-full border-2">Guardar Dirección</Button>
+            </form>
+          </div>
+
+          <div>
+             <h3 className="text-sm font-black uppercase mb-4">Direcciones Guardadas</h3>
+             {(!currentUser.addresses || currentUser.addresses.length === 0) ? (
+              <div className="text-sm font-bold uppercase text-gray-500">No hay direcciones.</div>
+            ) : (
+              <div className="space-y-4">
+                {currentUser.addresses.map((addr, idx) => (
+                  <div key={idx} className="flex justify-between items-start border-2 border-black p-4 relative group">
+                    <div>
+                      <div className="font-bold text-sm uppercase">{addr.address}</div>
+                      <div className="text-xs font-bold text-gray-500 uppercase">{addr.city}, C.P. {addr.zip}</div>
+                    </div>
+                    <button onClick={() => handleDeleteAddress(idx)} className="text-gray-500 hover:text-black opacity-0 group-hover:opacity-100 transition-all absolute top-2 right-2"><Trash2 size={16}/></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
