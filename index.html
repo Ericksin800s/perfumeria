@@ -608,8 +608,17 @@
                             const newStock = productInDb.stock - item.quantity;
                             await updateDoc(doc(productsRef, item.id), { stock: newStock });
                         }
+                        
+                        const orderDetails = cart.map(item => `${item.quantity}x ${item.name}`).join(' | ');
+                        enviarCorreoNotificacion(
+                            currentUser.name, 
+                            currentUser.email, 
+                            "Confirmación de Pedido", 
+                            `Tu pedido por un total de $${total.toFixed(2)} ha sido aprobado y registrado. Artículos: ${orderDetails}. ¡Gracias por confiar en NOIR!`
+                        );
+
                         setCart([]);
-                        showToast(`¡Compra exitosa! Pedido registrado.`);
+                        showToast(`¡Compra exitosa! Pedido registrado y correo enviado.`);
                         setView('orders');
                     } catch (err) { showToast(err.message || "Error al procesar la compra"); } 
                     finally { setIsCheckingOut(false); }
@@ -718,7 +727,15 @@
                                 await updateDoc(doc(productsRef, item.id), { stock: newStock });
                             }
                         }
-                        showToast("Pedido cancelado y stock liberado");
+                        
+                        enviarCorreoNotificacion(
+                            currentUser.name,
+                            currentUser.email,
+                            "Cancelación de Pedido",
+                            `Tu pedido #${order.id.slice(0,8)} ha sido cancelado exitosamente. El monto no será cobrado y los artículos han regresado a nuestro inventario.`
+                        );
+
+                        showToast("Pedido cancelado, stock liberado y correo enviado");
                     } catch (err) { showToast("Error al cancelar el pedido"); }
                 };
 
