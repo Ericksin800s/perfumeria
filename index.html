@@ -26,28 +26,26 @@
     </style>
 </head>
 <body>
-    <!-- Contenedor principal donde React inyectará la aplicación -->
     <div id="root"></div>
 
-    <!-- Módulo de Firebase: Importamos las librerías oficiales -->
+    <!-- Módulo de Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, query, getDocs, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Exponemos las funciones al entorno global para que React pueda usarlas
         window.FB = { initializeApp, getAuth, signInAnonymously, getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, query, getDocs, where };
         window.dispatchEvent(new Event('firebase-ready'));
     </script>
 
-    <!-- Código React (Aplicación Completa) -->
+    <!-- Código React -->
     <script type="text/babel">
         const startReactApp = () => {
             const { useState, useEffect } = React;
             const { initializeApp, getAuth, signInAnonymously, getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, query, getDocs, where } = window.FB;
 
             // ==========================================
-            // CONFIGURACIÓN DE FIREBASE Y ENTORNO
+            // CONFIGURACIÓN DE FIREBASE
             // ==========================================
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'perfume-store-app';
             const firebaseConfig = {
@@ -64,13 +62,14 @@
             const db = getFirestore(app);
 
             // ==========================================
-            // CONFIGURACIÓN DE EMAILJS
+            // CONFIGURACIÓN DE EMAILJS (CON DIAGNÓSTICO)
             // ==========================================
             const EMAILJS_SERVICE_ID = "service_flg76cj";
             const EMAILJS_TEMPLATE_ID = "template_otnza77";
             const EMAILJS_PUBLIC_KEY = "52ikRo80iqzF-e_Dx";
 
-            const enviarCorreoNotificacion = async (nombreUsuario, correoUsuario, tipo, detallesExtra = "") => {
+            // Pasamos showToast como parámetro para poder ver los errores en pantalla
+            const enviarCorreoNotificacion = async (nombreUsuario, correoUsuario, tipo, detallesExtra = "", showToast = null) => {
                 const templateParams = {
                     to_name: nombreUsuario,
                     to_email: correoUsuario,
@@ -89,11 +88,21 @@
                             template_params: templateParams
                         })
                     });
+                    
                     if (response.ok) {
-                        console.log(`Correo de [${tipo}] enviado correctamente a ${correoUsuario}`);
+                        console.log(`Correo de [${tipo}] enviado al servidor correctamente.`);
+                    } else {
+                        const errorText = await response.text();
+                        console.error("Error devuelto por EmailJS:", errorText);
+                        if (showToast) {
+                            showToast(`⚠️ Error EmailJS: ${errorText}`);
+                        }
                     }
                 } catch (err) {
                     console.error("Error de red al intentar enviar el correo", err);
+                    if (showToast) {
+                        showToast(`⚠️ Error de red al contactar EmailJS.`);
+                    }
                 }
             };
 
@@ -170,15 +179,8 @@
 
                 useEffect(() => {
                     if (!sysReady) return;
-
-                    const unsubProducts = onSnapshot(productsRef, (snap) => {
-                        setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                    });
-
-                    const unsubOrders = onSnapshot(ordersRef, (snap) => {
-                        setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                    });
-
+                    const unsubProducts = onSnapshot(productsRef, (snap) => { setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
+                    const unsubOrders = onSnapshot(ordersRef, (snap) => { setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
                     const unsubUsers = onSnapshot(usersRef, (snap) => {
                         const usersData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                         setUsers(usersData);
@@ -187,7 +189,6 @@
                             if (updated) setCurrentUser(updated);
                         }
                     });
-
                     return () => { unsubProducts(); unsubOrders(); unsubUsers(); };
                 }, [sysReady, currentUser]);
 
@@ -215,20 +216,11 @@
 
                 const showToast = (msg) => {
                     setToastMessage(msg);
-                    setTimeout(() => setToastMessage(null), 4000); 
+                    setTimeout(() => setToastMessage(null), 5000); 
                 };
 
-                const handleLogin = (userObj) => {
-                    setCurrentUser(userObj);
-                    setView('home');
-                    showToast(`Bienvenido, ${userObj.name}`);
-                };
-
-                const handleLogout = () => {
-                    setCurrentUser(null);
-                    setCart([]);
-                    setView('login');
-                };
+                const handleLogin = (userObj) => { setCurrentUser(userObj); setView('home'); showToast(`Bienvenido, ${userObj.name}`); };
+                const handleLogout = () => { setCurrentUser(null); setCart([]); setView('login'); };
 
                 const addToCart = (product) => {
                     if (product.stock <= 0) return showToast("Producto agotado");
@@ -268,12 +260,8 @@
                                         
                                         {currentUser.role === 'admin' && (
                                             <>
-                                                <button onClick={() => setView('inventory')} className={`hover:underline underline-offset-4 ${view === 'inventory' ? 'underline' : ''} text-gray-500 flex items-center gap-1`}>
-                                                    <i className="fa-solid fa-table-columns text-sm"></i> Inventario
-                                                </button>
-                                                <button onClick={() => setView('users')} className={`hover:underline underline-offset-4 ${view === 'users' ? 'underline' : ''} text-gray-500 flex items-center gap-1`}>
-                                                    <i className="fa-solid fa-users text-sm"></i> Usuarios
-                                                </button>
+                                                <button onClick={() => setView('inventory')} className={`hover:underline underline-offset-4 ${view === 'inventory' ? 'underline' : ''} text-gray-500 flex items-center gap-1`}><i className="fa-solid fa-table-columns text-sm"></i> Inventario</button>
+                                                <button onClick={() => setView('users')} className={`hover:underline underline-offset-4 ${view === 'users' ? 'underline' : ''} text-gray-500 flex items-center gap-1`}><i className="fa-solid fa-users text-sm"></i> Usuarios</button>
                                             </>
                                         )}
 
@@ -370,8 +358,10 @@
                         const code = Math.floor(1000 + Math.random() * 9000).toString();
                         setVerificationCode(code);
                         setStep('verify');
-                        enviarCorreoNotificacion(formData.name || 'Usuario', formData.email, "Código de Verificación", `Tu código en NOIR es: ${code}`);
-                        showToast(`¡Código enviado! Usa ${code} para verificar.`);
+                        
+                        // Usamos showToast como parámetro para ver errores
+                        enviarCorreoNotificacion(formData.name || 'Usuario', formData.email, "Código de Verificación", `Tu código en NOIR es: ${code}`, showToast);
+                        showToast(`¡Código enviado! Revisa tu bandeja de entrada o spam.`);
                     }
                 };
 
@@ -425,7 +415,7 @@
                 <div className="flex flex-col items-center justify-center py-10 md:py-20 text-center space-y-12">
                     <div className="space-y-4 max-w-2xl px-4">
                         <h1 className="text-5xl md:text-8xl font-black uppercase tracking-tighter leading-tight md:leading-none">Puro.<br/>Intenso.<br/>Noir.</h1>
-                        <p className="text-sm md:text-base font-bold uppercase tracking-widest text-gray-600 pt-8">Descubre nuestra colección exclusiva de fragancias minimalistas. Sin distracciones, solo esencia.</p>
+                        <p className="text-sm md:text-base font-bold uppercase tracking-widest text-gray-600 pt-8">Descubre nuestra colección exclusiva de fragancias minimalistas.</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mt-12 px-4">
                         <div onClick={() => setView('catalog')} className="group border-4 border-black p-8 md:p-12 cursor-pointer hover:bg-black hover:text-white transition-colors duration-500 flex flex-col items-center justify-center aspect-square">
@@ -506,7 +496,7 @@
                     <div className="w-full">
                         <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-end mb-8 md:mb-12 border-b-8 border-black pb-4">
                             <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">Inventario</h1>
-                            <Button onClick={openAddModal} className="flex items-center gap-2"><i className="fa-solid fa-plus text-base"></i> Nuevo Producto</Button>
+                            <Button onClick={openAddModal} className="flex items-center gap-2"><i className="fa-solid fa-plus text-base"></i> Nuevo</Button>
                         </div>
                         <div className="overflow-x-auto border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white w-full">
                             <table className="w-full text-left border-collapse min-w-[600px]">
@@ -593,7 +583,7 @@
                             const productInDb = products.find(p => p.id === item.id);
                             if (!productInDb || productInDb.stock < item.quantity) throw new Error(`Stock insuficiente para ${item.name}`);
                         }
-                        showToast("Procesando pago...");
+                        
                         await new Promise(resolve => setTimeout(resolve, 1500));
                         if (paymentInfo.saveCard && !useSavedCard) {
                             const last4 = paymentInfo.number.slice(-4);
@@ -610,15 +600,17 @@
                         }
                         
                         const orderDetails = cart.map(item => `${item.quantity}x ${item.name}`).join(' | ');
+                        // Usamos showToast como parámetro para ver errores
                         enviarCorreoNotificacion(
                             currentUser.name, 
                             currentUser.email, 
                             "Confirmación de Pedido", 
-                            `Tu pedido por un total de $${total.toFixed(2)} ha sido aprobado y registrado. Artículos: ${orderDetails}. ¡Gracias por confiar en NOIR!`
+                            `Tu pedido por un total de $${total.toFixed(2)} ha sido aprobado y registrado. Artículos: ${orderDetails}.`,
+                            showToast
                         );
 
                         setCart([]);
-                        showToast(`¡Compra exitosa! Pedido registrado y correo enviado.`);
+                        showToast(`¡Compra exitosa! Pedido registrado y correo en camino.`);
                         setView('orders');
                     } catch (err) { showToast(err.message || "Error al procesar la compra"); } 
                     finally { setIsCheckingOut(false); }
@@ -705,7 +697,7 @@
                                     </div>
                                 </div>
                                 <Button type="submit" disabled={isCheckingOut} className="w-full py-4 text-sm sm:text-lg mt-6 bg-black text-white hover:bg-gray-800 border-none">
-                                    {isCheckingOut ? 'Procesando Pago...' : 'Confirmar y Pagar'}
+                                    {isCheckingOut ? 'Procesando...' : 'Confirmar y Pagar'}
                                 </Button>
                             </form>
                         </div>
@@ -728,14 +720,16 @@
                             }
                         }
                         
+                        // Usamos showToast como parámetro para ver errores
                         enviarCorreoNotificacion(
                             currentUser.name,
                             currentUser.email,
                             "Cancelación de Pedido",
-                            `Tu pedido #${order.id.slice(0,8)} ha sido cancelado exitosamente. El monto no será cobrado y los artículos han regresado a nuestro inventario.`
+                            `Tu pedido #${order.id.slice(0,8)} ha sido cancelado exitosamente.`,
+                            showToast
                         );
 
-                        showToast("Pedido cancelado, stock liberado y correo enviado");
+                        showToast("Pedido cancelado y stock liberado");
                     } catch (err) { showToast("Error al cancelar el pedido"); }
                 };
 
@@ -778,7 +772,7 @@
                                             </div>
                                         </div>
                                         <div className="flex flex-col sm:flex-row flex-wrap gap-4 pt-4 border-t-2 border-black">
-                                            {order.status === 'Pendiente' && currentUser.role !== 'admin' && <Button variant="danger" onClick={() => handleCancel(order)} className="w-full sm:w-auto">Cancelar Pedido</Button>}
+                                            {order.status === 'Pendiente' && currentUser.role !== 'admin' && <Button variant="danger" onClick={() => handleCancel(order)} className="w-full sm:w-auto">Cancelar</Button>}
                                             {currentUser.role !== 'admin' && <Button variant="secondary" onClick={() => handleReorder(order)} className="w-full sm:w-auto">Volver a Pedir</Button>}
                                             {currentUser.role === 'admin' && order.status === 'Pendiente' && <Button onClick={() => handleUpdateStatus(order.id, 'Enviado')} className="w-full sm:w-auto">Marcar Enviado</Button>}
                                             {currentUser.role === 'admin' && order.status !== 'Cancelado' && <Button variant="danger" onClick={() => handleCancel(order)} className="w-full sm:w-auto">Forzar Cancelación</Button>}
@@ -797,9 +791,6 @@
                     <p className="text-lg md:text-xl font-bold leading-relaxed text-justify">
                         NOIR NACE DE LA NECESIDAD DE VOLVER A LO BÁSICO. EN UN MUNDO SATURADO DE COLORES Y DISTRACCIONES, OFRECEMOS FRAGANCIAS PURAS, DONDE EL AROMA ES EL ÚNICO PROTAGONISTA.
                     </p>
-                    <div className="border-4 border-black p-6 md:p-8 font-black uppercase text-xl md:text-2xl text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white">
-                        "No vendemos perfume. Vendemos actitud encapsulada en blanco y negro."
-                    </div>
                 </div>
             );
 
@@ -843,9 +834,9 @@
 
             const FaqView = () => (
                 <div className="max-w-3xl mx-auto py-8 md:py-12 px-4">
-                    <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-8 md:mb-12 border-b-8 border-black pb-4 flex items-center gap-4"><i className="fa-solid fa-circle-question text-5xl"></i> Preguntas Frecuentes</h1>
+                    <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-8 md:mb-12 border-b-8 border-black pb-4 flex items-center gap-4"><i className="fa-solid fa-circle-question text-5xl"></i> FAQ</h1>
                     <div className="space-y-6">
-                        {[ { q: "¿Cuánto tarda el envío?", a: "Nuestros envíos tardan de 2 a 5 días hábiles a nivel nacional." }, { q: "¿Tienen devoluciones?", a: "Por higiene, solo aceptamos devoluciones si el producto llega dañado en su empaque original sellado." }, { q: "¿Son perfumes originales?", a: "Somos creadores. NOIR es una marca independiente de perfumería nicho." } ].map((faq, idx) => (
+                        {[ { q: "¿Cuánto tarda el envío?", a: "Tardan de 2 a 5 días hábiles a nivel nacional." }, { q: "¿Tienen devoluciones?", a: "Solo aceptamos devoluciones si el producto llega dañado." }].map((faq, idx) => (
                             <div key={idx} className="border-l-8 border-black pl-4 md:pl-6 py-2 bg-white">
                                 <h3 className="text-base md:text-lg font-black uppercase tracking-tight mb-2">{faq.q}</h3>
                                 <p className="text-sm md:text-base font-bold text-gray-600">{faq.a}</p>
@@ -897,7 +888,7 @@
                 
                 const handleUpdateName = async (e) => {
                     e.preventDefault();
-                    try { await updateDoc(doc(usersRef, currentUser.id), { name }); showToast("Nombre actualizado"); } catch (err) { showToast("Error al actualizar perfil"); }
+                    try { await updateDoc(doc(usersRef, currentUser.id), { name }); showToast("Nombre actualizado"); } catch (err) {}
                 };
 
                 const handleAddAddress = async (e) => {
@@ -1000,17 +991,12 @@
                 );
             };
 
-            // Iniciar React inyectando la app en el div con id "root"
+            // Iniciar React
             const root = ReactDOM.createRoot(document.getElementById('root'));
             root.render(<App />);
         };
 
-        // Esperar a que el módulo de Firebase haya cargado completamente
-        if (window.FB) {
-            startReactApp();
-        } else {
-            window.addEventListener('firebase-ready', startReactApp);
-        }
+        if (window.FB) { startReactApp(); } else { window.addEventListener('firebase-ready', startReactApp); }
     </script>
 </body>
 </html>
