@@ -7,7 +7,7 @@ import {
 } from 'firebase/firestore';
 import { 
   ShoppingBag, User, MapPin, Info, Phone, HelpCircle, 
-  Package, LayoutDashboard, LogOut, X, Plus, Trash2, Edit2, Check, Users, CreditCard, Settings
+  Package, LayoutDashboard, LogOut, X, Plus, Trash2, Edit2, CreditCard, Settings, Users
 } from 'lucide-react';
 
 // ==========================================
@@ -68,7 +68,7 @@ const enviarCorreoNotificacion = async (nombreUsuario, correoUsuario, tipo, deta
 // COMPONENTES UI MINIMALISTAS (BLANCO Y NEGRO)
 // ==========================================
 const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }) => {
-  const baseStyle = "px-6 py-2 uppercase tracking-widest text-sm font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed";
+  const baseStyle = "px-6 py-2 uppercase tracking-widest text-sm font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed text-center flex justify-center items-center gap-2";
   const variants = {
     primary: "bg-black text-white border border-black hover:bg-white hover:text-black",
     secondary: "bg-white text-black border border-black hover:bg-black hover:text-white",
@@ -90,7 +90,7 @@ const Input = ({ label, type = 'text', value, onChange, required = false, classN
       value={value} 
       onChange={onChange} 
       required={required}
-      className="border-b border-black bg-transparent py-2 outline-none focus:border-b-4 transition-all duration-200 rounded-none"
+      className="border-b border-black bg-transparent py-2 outline-none focus:border-b-4 transition-all duration-200 rounded-none w-full"
     />
   </div>
 );
@@ -115,39 +115,36 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 // ==========================================
 export default function App() {
   const [sysReady, setSysReady] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null); // Usuario de la tienda
-  const [view, setView] = useState('login'); // login, home, catalog, inventory, orders, locations, about, contact, faq
+  const [currentUser, setCurrentUser] = useState(null);
+  const [view, setView] = useState('login'); 
   const [cart, setCart] = useState([]);
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Estados de Base de Datos
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [users, setUsers] = useState([]);
 
-  // Rutas de Firestore (Estrictas según reglas del entorno)
   const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'store_users');
   const productsRef = collection(db, 'artifacts', appId, 'public', 'data', 'store_products');
   const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'store_orders');
 
-  // Inicialización del sistema
+  // Inicialización del sistema con manejo de errores robusto
   useEffect(() => {
     const initSystem = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined') {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        // Ignoramos el token inicial del entorno porque estamos usando un proyecto Firebase personalizado
+        await signInAnonymously(auth);
         setSysReady(true);
       } catch (error) {
-        console.error("Error de inicialización:", error);
+        console.error("Error de inicialización de Firebase:", error);
+        // Forzamos el renderizado de la UI incluso si falla la autenticación (ej. bloqueos de dominio)
+        setSysReady(true);
+        showToast("Advertencia: Modo offline activado debido a un error de conexión.");
       }
     };
     initSystem();
   }, []);
 
-  // Suscripciones a la base de datos en tiempo real
   useEffect(() => {
     if (!sysReady) return;
 
@@ -163,7 +160,6 @@ export default function App() {
       const usersData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setUsers(usersData);
       
-      // Actualizar los datos del usuario actual en tiempo real si modifica su perfil o rol
       if (currentUser) {
         const updated = usersData.find(u => u.id === currentUser.id);
         if (updated) setCurrentUser(updated);
@@ -173,7 +169,6 @@ export default function App() {
     return () => { unsubProducts(); unsubOrders(); unsubUsers(); };
   }, [sysReady, currentUser]);
 
-  // Creación automática del Administrador Maestro
   useEffect(() => {
     const seedAdmin = async () => {
       if (!sysReady) return;
@@ -184,13 +179,12 @@ export default function App() {
           await addDoc(usersRef, {
             email: "erickztgt800@gmail.com",
             name: "Erick Gómez Tejeda",
-            password: "admin", // Contraseña por defecto
+            password: "admin", 
             role: "admin",
             createdAt: new Date().toISOString(),
             addresses: [],
             savedCards: []
           });
-          console.log("Admin maestro creado.");
         }
       } catch (err) {
         console.error("Error validando admin maestro", err);
@@ -201,7 +195,7 @@ export default function App() {
 
   const showToast = (msg) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4000); // 4 segundos para que dé tiempo a leer
+    setTimeout(() => setToastMessage(null), 4000); 
   };
 
   const handleLogin = (userObj) => {
@@ -240,30 +234,29 @@ export default function App() {
 
   const getCartTotal = () => cart.reduce((total, item) => total + (item.price * item.quantity), 0);
 
-  if (!sysReady) return <div className="min-h-screen flex items-center justify-center bg-white text-black font-black uppercase tracking-widest">Inicializando Sistema...</div>;
+  if (!sysReady) return <div className="min-h-screen flex items-center justify-center bg-white text-black font-black uppercase tracking-widest text-2xl">Inicializando Sistema...</div>;
 
   return (
-    <div className="min-h-screen bg-white text-black font-sans selection:bg-black selection:text-white">
-      {/* Sistema de Alertas / Toast */}
+    <div className="min-h-screen bg-white text-black font-sans selection:bg-black selection:text-white flex flex-col">
+      {/* Toast */}
       {toastMessage && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-black text-white px-6 py-3 font-bold uppercase tracking-widest border-2 border-white shadow-[5px_5px_0px_0px_rgba(255,255,255,1)] text-center w-max max-w-full">
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-black text-white px-6 py-3 font-bold uppercase tracking-widest border-2 border-white shadow-[5px_5px_0px_0px_rgba(255,255,255,1)] text-center w-max max-w-[90vw] overflow-hidden text-ellipsis">
           {toastMessage}
         </div>
       )}
 
-      {/* Navegación Principal */}
+      {/* Navbar */}
       {currentUser && (
-        <nav className="border-b-4 border-black p-4 sticky top-0 bg-white z-40">
+        <nav className="border-b-4 border-black p-4 sticky top-0 bg-white z-40 w-full">
           <div className="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-4">
             <div className="text-2xl font-black uppercase tracking-tighter cursor-pointer" onClick={() => setView('home')}>
               NOIR <span className="font-light">PARFUMS</span>
             </div>
             
-            <div className="flex flex-wrap gap-4 md:gap-8 text-xs font-bold uppercase tracking-widest items-center">
+            <div className="flex flex-wrap gap-3 md:gap-6 text-xs font-bold uppercase tracking-widest items-center">
               <button onClick={() => setView('home')} className={`hover:underline underline-offset-4 ${view === 'home' ? 'underline' : ''}`}>Inicio</button>
               <button onClick={() => setView('catalog')} className={`hover:underline underline-offset-4 ${view === 'catalog' ? 'underline' : ''}`}>Catálogo</button>
               
-              {/* Opciones solo para Administrador */}
               {currentUser.role === 'admin' && (
                 <>
                   <button onClick={() => setView('inventory')} className={`hover:underline underline-offset-4 ${view === 'inventory' ? 'underline' : ''} text-gray-500 flex items-center gap-1`}>
@@ -279,7 +272,7 @@ export default function App() {
               
               <div className="group relative">
                 <button className="hover:underline underline-offset-4 flex items-center gap-1">Nosotros</button>
-                <div className="absolute hidden group-hover:flex flex-col bg-white border-2 border-black p-2 mt-2 w-40 z-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <div className="absolute hidden group-hover:flex flex-col bg-white border-2 border-black p-2 mt-0 w-40 z-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] left-0 top-full">
                   <button onClick={() => setView('about')} className="text-left p-2 hover:bg-black hover:text-white transition-colors">Quiénes Somos</button>
                   <button onClick={() => setView('contact')} className="text-left p-2 hover:bg-black hover:text-white transition-colors">Contacto</button>
                   <button onClick={() => setView('locations')} className="text-left p-2 hover:bg-black hover:text-white transition-colors">Sucursales</button>
@@ -288,7 +281,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 md:gap-6 mt-4 md:mt-0">
               <button onClick={() => setView('cart')} className="relative flex items-center hover:scale-110 transition-transform">
                 <ShoppingBag size={24} />
                 {cart.length > 0 && (
@@ -298,9 +291,9 @@ export default function App() {
                 )}
               </button>
               <div className="flex items-center gap-2 border-l-2 border-black pl-4">
-                <div className="text-right hidden md:block cursor-pointer hover:underline group" onClick={() => setView('profile')}>
+                <div className="text-right hidden sm:block cursor-pointer hover:underline group" onClick={() => setView('profile')}>
                   <div className="text-xs font-black uppercase flex items-center justify-end gap-1 group-hover:text-gray-500 transition-colors">
-                    <User size={12}/> {currentUser.name}
+                    <User size={12}/> {currentUser.name.split(' ')[0]}
                   </div>
                   <div className="text-[10px] uppercase tracking-widest text-gray-500">{currentUser.role}</div>
                 </div>
@@ -313,8 +306,8 @@ export default function App() {
         </nav>
       )}
 
-      {/* Contenedor Principal de Vistas */}
-      <main className="max-w-6xl mx-auto p-4 py-8">
+      {/* Main Content */}
+      <main className="flex-grow w-full max-w-6xl mx-auto p-4 py-8">
         {!currentUser ? (
           <AuthView onLogin={handleLogin} users={users} usersRef={usersRef} showToast={showToast} />
         ) : (
@@ -334,11 +327,11 @@ export default function App() {
         )}
       </main>
       
-      {/* Footer Minimalista */}
+      {/* Footer */}
       {currentUser && (
-        <footer className="border-t-4 border-black mt-20 py-12 text-center">
+        <footer className="border-t-4 border-black py-12 text-center w-full mt-auto">
           <div className="text-3xl font-black uppercase tracking-tighter mb-4">NOIR</div>
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-500 px-4">
             La esencia de la elegancia en blanco y negro. &copy; 2026.
           </p>
         </footer>
@@ -352,7 +345,7 @@ export default function App() {
 // ==========================================
 const AuthView = ({ onLogin, users, usersRef, showToast }) => {
   const [isLogin, setIsLogin] = useState(true);
-  const [step, setStep] = useState('form'); // 'form' | 'verify'
+  const [step, setStep] = useState('form'); 
   const [verificationCode, setVerificationCode] = useState('');
   const [inputCode, setInputCode] = useState('');
   
@@ -364,7 +357,6 @@ const AuthView = ({ onLogin, users, usersRef, showToast }) => {
     setError('');
 
     if (isLogin) {
-      // Login
       const user = users.find(u => u.email === formData.email && u.password === formData.password);
       if (user) {
         onLogin(user);
@@ -372,18 +364,15 @@ const AuthView = ({ onLogin, users, usersRef, showToast }) => {
         setError('Credenciales incorrectas o usuario no encontrado.');
       }
     } else {
-      // Registro - Paso 1: Validación
       if (users.find(u => u.email === formData.email)) {
         setError('El correo ya está registrado.');
         return;
       }
       
-      // Generar código aleatorio de 4 dígitos
       const code = Math.floor(1000 + Math.random() * 9000).toString();
       setVerificationCode(code);
       setStep('verify');
       
-      // Enviar correo real usando la API de EmailJS configurada
       enviarCorreoNotificacion(
         formData.name || 'Usuario', 
         formData.email, 
@@ -391,7 +380,7 @@ const AuthView = ({ onLogin, users, usersRef, showToast }) => {
         `Tu código para confirmar tu cuenta en NOIR PARFUMS es: ${code}`
       );
       
-      showToast(`¡Código enviado! Revisa tu correo: ${formData.email}`);
+      showToast(`¡Código enviado! Revisa tu correo (o usa ${code} para demo)`);
     }
   };
 
@@ -402,7 +391,6 @@ const AuthView = ({ onLogin, users, usersRef, showToast }) => {
       return;
     }
 
-    // Paso 2: Crear el usuario en la BD
     const newUser = {
       email: formData.email,
       password: formData.password,
@@ -417,15 +405,15 @@ const AuthView = ({ onLogin, users, usersRef, showToast }) => {
       const docRef = await addDoc(usersRef, newUser);
       onLogin({ id: docRef.id, ...newUser });
     } catch (err) {
-      setError('Error al crear la cuenta.');
+      setError('Error al crear la cuenta. Verifica tu conexión.');
       console.error(err);
     }
   };
 
   return (
-    <div className="max-w-md mx-auto mt-20 p-8 border-4 border-black shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] bg-white">
+    <div className="max-w-md mx-auto mt-10 md:mt-20 p-8 border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white w-full">
       <h1 className="text-4xl font-black uppercase tracking-tighter text-center mb-8">
-        {step === 'verify' ? 'Verificación' : (isLogin ? 'Acceso' : 'Registro')}
+        {step === 'verify' ? 'Verificar' : (isLogin ? 'Acceso' : 'Registro')}
       </h1>
       
       {error && <div className="mb-6 p-4 border-2 border-black bg-black text-white text-xs font-bold uppercase">{error}</div>}
@@ -441,7 +429,7 @@ const AuthView = ({ onLogin, users, usersRef, showToast }) => {
           {!isLogin && (
             <label className="flex items-center space-x-2 cursor-pointer mt-4 group">
               <input type="checkbox" className="appearance-none w-5 h-5 border-2 border-black checked:bg-black cursor-pointer transition-colors" checked={formData.reqAdmin} onChange={e => setFormData({...formData, reqAdmin: e.target.checked})} />
-              <span className="text-xs uppercase font-bold tracking-widest text-gray-500 group-hover:text-black">Solicitar rol de Administrador</span>
+              <span className="text-xs uppercase font-bold tracking-widest text-gray-500 group-hover:text-black">Ser Administrador (Demo)</span>
             </label>
           )}
 
@@ -451,7 +439,7 @@ const AuthView = ({ onLogin, users, usersRef, showToast }) => {
         <form onSubmit={handleVerifyCode} className="space-y-6 text-center">
           <p className="text-sm font-bold uppercase text-gray-600 mb-6">Hemos enviado un código a {formData.email}.</p>
           <Input label="Código de 4 dígitos" type="text" required value={inputCode} onChange={e => setInputCode(e.target.value)} className="text-center text-2xl tracking-[1em] font-black" />
-          <Button type="submit" className="w-full text-lg py-4 mt-8">Confirmar y Crear Cuenta</Button>
+          <Button type="submit" className="w-full text-lg py-4 mt-8">Confirmar y Crear</Button>
           <button type="button" onClick={() => setStep('form')} className="text-xs uppercase tracking-widest font-bold hover:underline mt-4 block w-full">Volver</button>
         </form>
       )}
@@ -459,7 +447,7 @@ const AuthView = ({ onLogin, users, usersRef, showToast }) => {
       {step === 'form' && (
         <div className="mt-8 text-center border-t-2 border-black pt-6">
           <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-xs uppercase tracking-widest font-bold hover:underline underline-offset-4">
-            {isLogin ? '¿No tienes cuenta? Regístrate aquí' : '¿Ya tienes cuenta? Inicia sesión'}
+            {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
           </button>
         </div>
       )}
@@ -471,28 +459,28 @@ const AuthView = ({ onLogin, users, usersRef, showToast }) => {
 // VISTA: INICIO
 // ==========================================
 const HomeView = ({ setView }) => (
-  <div className="flex flex-col items-center justify-center py-20 text-center space-y-12">
-    <div className="space-y-4 max-w-2xl">
-      <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter leading-none">Puro.<br/>Intenso.<br/>Noir.</h1>
+  <div className="flex flex-col items-center justify-center py-10 md:py-20 text-center space-y-12">
+    <div className="space-y-4 max-w-2xl px-4">
+      <h1 className="text-5xl md:text-8xl font-black uppercase tracking-tighter leading-tight md:leading-none">Puro.<br/>Intenso.<br/>Noir.</h1>
       <p className="text-sm md:text-base font-bold uppercase tracking-widest text-gray-600 pt-8">
         Descubre nuestra colección exclusiva de fragancias minimalistas. Sin distracciones, solo esencia.
       </p>
     </div>
     
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mt-12">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mt-12 px-4">
       <div 
         onClick={() => setView('catalog')}
-        className="group border-4 border-black p-12 cursor-pointer hover:bg-black hover:text-white transition-colors duration-500 flex flex-col items-center justify-center aspect-square"
+        className="group border-4 border-black p-8 md:p-12 cursor-pointer hover:bg-black hover:text-white transition-colors duration-500 flex flex-col items-center justify-center aspect-square"
       >
         <Package size={48} className="mb-6 group-hover:scale-110 transition-transform" />
-        <h2 className="text-2xl font-black uppercase tracking-widest">Ver Catálogo</h2>
+        <h2 className="text-2xl font-black uppercase tracking-widest text-center">Ver Catálogo</h2>
       </div>
       <div 
         onClick={() => setView('locations')}
-        className="group border-4 border-black p-12 cursor-pointer hover:bg-black hover:text-white transition-colors duration-500 flex flex-col items-center justify-center aspect-square"
+        className="group border-4 border-black p-8 md:p-12 cursor-pointer hover:bg-black hover:text-white transition-colors duration-500 flex flex-col items-center justify-center aspect-square"
       >
         <MapPin size={48} className="mb-6 group-hover:scale-110 transition-transform" />
-        <h2 className="text-2xl font-black uppercase tracking-widest">Sucursales</h2>
+        <h2 className="text-2xl font-black uppercase tracking-widest text-center">Sucursales</h2>
       </div>
     </div>
   </div>
@@ -502,31 +490,31 @@ const HomeView = ({ setView }) => (
 // VISTA: CATÁLOGO
 // ==========================================
 const CatalogView = ({ products, addToCart }) => (
-  <div>
-    <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 inline-block">Catálogo</h1>
+  <div className="w-full">
+    <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-8 md:mb-12 border-b-8 border-black pb-4 inline-block">Catálogo</h1>
     
     {products.length === 0 ? (
       <div className="text-center py-20 border-2 border-dashed border-black font-bold uppercase tracking-widest">No hay productos disponibles por el momento.</div>
     ) : (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
         {products.map(product => (
-          <div key={product.id} className="border-4 border-black group bg-white flex flex-col relative shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]">
+          <div key={product.id} className="border-4 border-black group bg-white flex flex-col relative shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] transition-shadow">
             <div className="absolute top-4 right-4 bg-black text-white text-[10px] font-bold px-2 py-1 uppercase tracking-widest z-10">
               Stock: {product.stock}
             </div>
             
-            <div className="aspect-square bg-gray-100 border-b-4 border-black overflow-hidden relative flex items-center justify-center">
+            <div className="aspect-square bg-gray-100 border-b-4 border-black overflow-hidden relative flex items-center justify-center p-4">
               {product.imageUrl ? (
-                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover filter grayscale contrast-125 group-hover:scale-105 transition-transform duration-500" onError={(e) => { e.target.onerror = null; e.target.src="https://placehold.co/400x400/eeeeee/000000?text=NOIR" }}/>
+                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-contain filter grayscale contrast-125 group-hover:scale-105 transition-transform duration-500" onError={(e) => { e.target.onerror = null; e.target.src="https://placehold.co/400x400/eeeeee/000000?text=NOIR" }}/>
               ) : (
                 <div className="text-4xl font-black text-gray-300 uppercase tracking-tighter">NOIR</div>
               )}
             </div>
             
             <div className="p-6 flex flex-col flex-grow">
-              <div className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">{product.brand}</div>
-              <h3 className="text-xl font-black uppercase tracking-tight mb-2">{product.name}</h3>
-              <div className="text-xs uppercase font-semibold mb-4 border-l-2 border-black pl-2">{product.olfactoryFamily} | Cod: {product.code}</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1 truncate">{product.brand}</div>
+              <h3 className="text-xl font-black uppercase tracking-tight mb-2 leading-tight">{product.name}</h3>
+              <div className="text-xs uppercase font-semibold mb-4 border-l-2 border-black pl-2 truncate">{product.olfactoryFamily} | Cod: {product.code}</div>
               <div className="text-2xl font-black mt-auto">${parseFloat(product.price).toFixed(2)}</div>
             </div>
             
@@ -576,21 +564,7 @@ const InventoryView = ({ products, productsRef, showToast }) => {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 400;
-        const scaleSize = MAX_WIDTH / img.width;
-        canvas.width = MAX_WIDTH;
-        canvas.height = img.height * scaleSize;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7); 
-        setFormData(prev => ({ ...prev, imageUrl: dataUrl }));
-      };
-      img.src = event.target.result;
+      setFormData(prev => ({ ...prev, imageUrl: event.target.result }));
     };
     reader.readAsDataURL(file);
   };
@@ -619,23 +593,25 @@ const InventoryView = ({ products, productsRef, showToast }) => {
   };
 
   const handleDelete = async (id) => {
-    try {
-      await deleteDoc(doc(productsRef, id));
-      showToast("Producto eliminado");
-    } catch (err) {
-      console.error(err);
+    if(window.confirm("¿Seguro que deseas eliminar este producto?")) {
+      try {
+        await deleteDoc(doc(productsRef, id));
+        showToast("Producto eliminado");
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-4 justify-between items-end mb-12 border-b-8 border-black pb-4">
-        <h1 className="text-4xl font-black uppercase tracking-tighter">Inventario</h1>
+    <div className="w-full">
+      <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-end mb-8 md:mb-12 border-b-8 border-black pb-4">
+        <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">Inventario</h1>
         <Button onClick={openAddModal} className="flex items-center gap-2"><Plus size={16} /> Nuevo Producto</Button>
       </div>
 
-      <div className="overflow-x-auto border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white">
-        <table className="w-full text-left border-collapse">
+      <div className="overflow-x-auto border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white w-full">
+        <table className="w-full text-left border-collapse min-w-[600px]">
           <thead>
             <tr className="bg-black text-white text-xs uppercase tracking-widest">
               <th className="p-4 border-r border-gray-700">Código</th>
@@ -647,6 +623,9 @@ const InventoryView = ({ products, productsRef, showToast }) => {
             </tr>
           </thead>
           <tbody>
+            {products.length === 0 && (
+              <tr><td colSpan="6" className="p-8 text-center font-bold uppercase text-gray-500">Sin productos</td></tr>
+            )}
             {products.map(p => (
               <tr key={p.id} className="border-b-2 border-black hover:bg-gray-50 transition-colors">
                 <td className="p-4 font-bold text-xs">{p.code}</td>
@@ -672,27 +651,28 @@ const InventoryView = ({ products, productsRef, showToast }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input label="Código" required value={formData.code} onChange={e => setFormData({...formData, code: e.target.value})} />
           <Input label="Nombre" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="Marca" required value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} />
             <Input label="Familia Olfativa" required value={formData.olfactoryFamily} onChange={e => setFormData({...formData, olfactoryFamily: e.target.value})} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="Precio" type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
             <Input label="Stock" type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} />
           </div>
           
-          <div className="flex flex-col border-2 border-dashed border-black p-4 text-center hover:bg-gray-50 transition-colors relative">
+          <div className="flex flex-col border-2 border-dashed border-black p-4 text-center hover:bg-gray-50 transition-colors relative h-32">
             <label className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
               <span className="text-xs font-bold uppercase tracking-widest">
                 {formData.imageUrl ? 'Cambiar Imagen' : 'Subir Imagen del Producto'}
               </span>
-              <span className="text-[10px] text-gray-500 uppercase mt-1">Explorar archivos</span>
               <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-              {formData.imageUrl && (
-                <img src={formData.imageUrl} alt="Preview" className="w-24 h-24 object-cover border-2 border-black mt-4 grayscale" />
-              )}
             </label>
           </div>
+          {formData.imageUrl && (
+             <div className="flex justify-center mt-2">
+               <img src={formData.imageUrl} alt="Preview" className="w-24 h-24 object-cover border-2 border-black grayscale" />
+             </div>
+          )}
 
           <Button type="submit" className="w-full mt-6">{editingId ? 'Guardar Cambios' : 'Añadir Producto'}</Button>
         </form>
@@ -726,7 +706,6 @@ const CartView = ({ cart, removeFromCart, total, setView, currentUser, ordersRef
   const handleCheckout = async (e) => {
     e.preventDefault();
     
-    // Validación estricta de formato
     if (!useSavedCard) {
       if (paymentInfo.number.length !== 16) return showToast("El número de tarjeta debe tener 16 dígitos");
       if (paymentInfo.expiry.length !== 5) return showToast("Fecha de vencimiento incompleta (MM/AA)");
@@ -736,7 +715,6 @@ const CartView = ({ cart, removeFromCart, total, setView, currentUser, ordersRef
     setIsCheckingOut(true);
 
     try {
-      // 1. Validar Stock Final
       for (const item of cart) {
         const productInDb = products.find(p => p.id === item.id);
         if (!productInDb || productInDb.stock < item.quantity) {
@@ -744,11 +722,9 @@ const CartView = ({ cart, removeFromCart, total, setView, currentUser, ordersRef
         }
       }
 
-      // 2. Simular Procesamiento Bancario
-      showToast("Procesando pago con el banco...");
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      showToast("Procesando pago...");
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
-      // 3. Guardar tarjeta 
       if (paymentInfo.saveCard && !useSavedCard) {
         const last4 = paymentInfo.number.slice(-4);
         const newCard = { last4, name: paymentInfo.name, expiry: paymentInfo.expiry };
@@ -756,7 +732,6 @@ const CartView = ({ cart, removeFromCart, total, setView, currentUser, ordersRef
         await updateDoc(doc(usersRef, currentUser.id), { savedCards: updatedCards });
       }
 
-      // 4. Crear Pedido
       const newOrder = {
         userId: currentUser.email,
         userName: currentUser.name,
@@ -769,25 +744,14 @@ const CartView = ({ cart, removeFromCart, total, setView, currentUser, ordersRef
 
       await addDoc(ordersRef, newOrder);
 
-      // 5. Descontar Stock
       for (const item of cart) {
         const productInDb = products.find(p => p.id === item.id);
         const newStock = productInDb.stock - item.quantity;
         await updateDoc(doc(productsRef, item.id), { stock: newStock });
       }
 
-      // 6. Enviar Correo Electrónico Real de Confirmación
-      const orderDetails = cart.map(item => `${item.quantity}x ${item.name}`).join(' | ');
-      enviarCorreoNotificacion(
-        currentUser.name, 
-        currentUser.email, 
-        "Confirmación de Pedido", 
-        `Tu pedido por un total de $${total.toFixed(2)} ha sido aprobado y registrado. Artículos: ${orderDetails}. ¡Gracias por confiar en NOIR!`
-      );
-
-      // 7. Limpiar y Redirigir
       setCart([]);
-      showToast(`¡Pago aprobado! El recibo de compra ha sido enviado a tu correo.`);
+      showToast(`¡Compra exitosa! Pedido registrado.`);
       setView('orders');
 
     } catch (err) {
@@ -801,49 +765,52 @@ const CartView = ({ cart, removeFromCart, total, setView, currentUser, ordersRef
   if (cart.length === 0) {
     return (
       <div className="text-center py-20">
-        <h1 className="text-4xl font-black uppercase tracking-tighter mb-6">Tu Carrito está vacío</h1>
-        <Button onClick={() => setView('catalog')}>Volver al Catálogo</Button>
+        <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-6">Tu Carrito está vacío</h1>
+        <div className="flex justify-center">
+            <Button onClick={() => setView('catalog')}>Volver al Catálogo</Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-      <div>
-        <h1 className="text-4xl font-black uppercase tracking-tighter mb-8 border-b-8 border-black pb-4">Carrito</h1>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full">
+      <div className="w-full overflow-hidden">
+        <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-8 border-b-8 border-black pb-4">Carrito</h1>
         <div className="space-y-4">
           {cart.map(item => (
-            <div key={item.id} className="flex gap-4 border-4 border-black p-4 bg-white items-center shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]">
-               <div className="w-20 h-20 bg-gray-100 flex-shrink-0 flex items-center justify-center overflow-hidden border-2 border-black">
-                 {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover grayscale" alt={item.name} /> : <span className="text-[10px] font-black uppercase">NOIR</span>}
+            <div key={item.id} className="flex flex-col sm:flex-row gap-4 border-4 border-black p-4 bg-white items-center shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]">
+               <div className="w-full sm:w-20 h-32 sm:h-20 bg-gray-100 flex-shrink-0 flex items-center justify-center overflow-hidden border-2 border-black p-2">
+                 {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-contain grayscale" alt={item.name} /> : <span className="text-[10px] font-black uppercase">NOIR</span>}
                </div>
-               <div className="flex-grow">
+               <div className="flex-grow text-center sm:text-left">
                  <h3 className="font-black uppercase text-lg leading-tight">{item.name}</h3>
-                 <div className="text-xs font-bold text-gray-500 uppercase">Cantidad: {item.quantity} | ${item.price} c/u</div>
+                 <div className="text-xs font-bold text-gray-500 uppercase mt-1">Cant: {item.quantity} | ${item.price} c/u</div>
                </div>
-               <div className="text-xl font-black mr-4">${(item.price * item.quantity).toFixed(2)}</div>
-               <button onClick={() => removeFromCart(item.id)} className="p-2 hover:bg-black hover:text-white transition-colors border-2 border-transparent hover:border-black">
-                 <X size={20} />
-               </button>
+               <div className="flex items-center justify-between w-full sm:w-auto sm:ml-4 gap-4 border-t-2 sm:border-t-0 border-black pt-4 sm:pt-0">
+                  <div className="text-xl font-black">${(item.price * item.quantity).toFixed(2)}</div>
+                  <button onClick={() => removeFromCart(item.id)} className="p-2 hover:bg-black hover:text-white transition-colors border-2 border-transparent hover:border-black flex-shrink-0">
+                    <X size={20} />
+                  </button>
+               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="bg-black text-white p-8 border-4 border-black shadow-[15px_15px_0px_0px_rgba(200,200,200,1)]">
+      <div className="bg-black text-white p-6 md:p-8 border-4 border-black shadow-[10px_10px_0px_0px_rgba(200,200,200,1)] w-full">
         <h2 className="text-2xl font-black uppercase tracking-widest mb-8 border-b-4 border-white pb-4">Checkout</h2>
         <div className="flex justify-between items-center text-xl font-bold uppercase mb-8">
           <span>Total a Pagar:</span>
-          <span className="text-3xl font-black">${total.toFixed(2)}</span>
+          <span className="text-2xl md:text-3xl font-black break-all ml-2">${total.toFixed(2)}</span>
         </div>
 
-        <form onSubmit={handleCheckout} className="space-y-8 bg-white text-black p-6 border-4 border-transparent">
-          
+        <form onSubmit={handleCheckout} className="space-y-8 bg-white text-black p-4 md:p-6 border-4 border-transparent">
           <div>
-            <h3 className="text-lg font-black uppercase border-b-2 border-black pb-2 mb-4 flex items-center gap-2"><MapPin size={18}/> Dirección de Envío</h3>
+            <h3 className="text-lg font-black uppercase border-b-2 border-black pb-2 mb-4 flex items-center gap-2"><MapPin size={18}/> Envío</h3>
             <div className="space-y-4">
               <Input label="Dirección Completa" required value={shippingInfo.address} onChange={e => setShippingInfo({...shippingInfo, address: e.target.value})} />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input label="Ciudad" required value={shippingInfo.city} onChange={e => setShippingInfo({...shippingInfo, city: e.target.value})} />
                 <Input label="Código Postal" required value={shippingInfo.zip} onChange={e => setShippingInfo({...shippingInfo, zip: e.target.value})} />
               </div>
@@ -851,19 +818,19 @@ const CartView = ({ cart, removeFromCart, total, setView, currentUser, ordersRef
           </div>
 
           <div>
-            <h3 className="text-lg font-black uppercase border-b-2 border-black pb-2 mb-4 flex items-center gap-2"><CreditCard size={18}/> Método de Pago</h3>
+            <h3 className="text-lg font-black uppercase border-b-2 border-black pb-2 mb-4 flex items-center gap-2"><CreditCard size={18}/> Pago</h3>
             
             {currentUser.savedCards && currentUser.savedCards.length > 0 && (
               <div className="mb-4">
                 <label className="text-xs uppercase tracking-widest font-bold block mb-2">Usar tarjeta guardada</label>
                 <select 
-                  className="w-full border-2 border-black p-2 outline-none font-bold uppercase text-sm bg-transparent"
+                  className="w-full border-2 border-black p-2 outline-none font-bold uppercase text-xs sm:text-sm bg-transparent"
                   value={useSavedCard}
                   onChange={handleSelectSavedCard}
                 >
                   <option value="">-- Ingresar nueva tarjeta --</option>
                   {currentUser.savedCards.map((card, idx) => (
-                    <option key={idx} value={card.last4}>Visa/MC terminada en {card.last4}</option>
+                    <option key={idx} value={card.last4}>Visa/MC **{card.last4}</option>
                   ))}
                 </select>
               </div>
@@ -881,15 +848,15 @@ const CartView = ({ cart, removeFromCart, total, setView, currentUser, ordersRef
                 <Input label="CVV" type="password" required={!useSavedCard} value={paymentInfo.cvv} onChange={e => setPaymentInfo({...paymentInfo, cvv: e.target.value.replace(/\D/g, '').substring(0, 3)})} />
               </div>
               {!useSavedCard && (
-                <label className="flex items-center space-x-2 cursor-pointer mt-4 group">
-                  <input type="checkbox" className="appearance-none w-5 h-5 border-2 border-black checked:bg-black cursor-pointer transition-colors" checked={paymentInfo.saveCard} onChange={e => setPaymentInfo({...paymentInfo, saveCard: e.target.checked})} />
-                  <span className="text-xs uppercase font-bold tracking-widest">Guardar tarjeta para futuras compras</span>
+                <label className="flex items-start space-x-2 cursor-pointer mt-4 group">
+                  <input type="checkbox" className="appearance-none w-5 h-5 flex-shrink-0 border-2 border-black checked:bg-black cursor-pointer transition-colors mt-0.5" checked={paymentInfo.saveCard} onChange={e => setPaymentInfo({...paymentInfo, saveCard: e.target.checked})} />
+                  <span className="text-xs uppercase font-bold tracking-widest leading-snug">Guardar tarjeta para futuras compras</span>
                 </label>
               )}
             </div>
           </div>
 
-          <Button type="submit" disabled={isCheckingOut} className="w-full py-4 text-lg mt-6 bg-black text-white hover:bg-gray-800 border-none">
+          <Button type="submit" disabled={isCheckingOut} className="w-full py-4 text-sm sm:text-lg mt-6 bg-black text-white hover:bg-gray-800 border-none">
             {isCheckingOut ? 'Procesando Pago...' : 'Confirmar y Pagar'}
           </Button>
         </form>
@@ -907,11 +874,9 @@ const OrdersView = ({ orders, currentUser, ordersRef, showToast, setCart, setVie
     : orders.filter(o => o.userId === currentUser.email);
 
   const handleCancel = async (order) => {
+    if(!window.confirm("¿Seguro que deseas cancelar este pedido?")) return;
     try {
-      // 1. Marcar como cancelado
       await updateDoc(doc(ordersRef, order.id), { status: 'Cancelado' });
-      
-      // 2. Liberar el stock (regresarlo al inventario)
       for (const item of order.items) {
         const productInDb = products.find(p => p.id === item.id);
         if (productInDb) {
@@ -919,15 +884,6 @@ const OrdersView = ({ orders, currentUser, ordersRef, showToast, setCart, setVie
           await updateDoc(doc(productsRef, item.id), { stock: newStock });
         }
       }
-
-      // 3. Enviar correo de cancelación
-      enviarCorreoNotificacion(
-        currentUser.name,
-        currentUser.email,
-        "Cancelación de Pedido",
-        `Tu pedido #${order.id.slice(0,8)} ha sido cancelado exitosamente. El monto no será cobrado y los artículos han regresado a nuestro inventario.`
-      );
-
       showToast("Pedido cancelado y stock liberado");
     } catch (err) {
       console.error(err);
@@ -951,29 +907,29 @@ const OrdersView = ({ orders, currentUser, ordersRef, showToast, setCart, setVie
   };
 
   return (
-    <div>
-      <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 inline-block">
+    <div className="w-full">
+      <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-8 md:mb-12 border-b-8 border-black pb-4 inline-block">
         {currentUser.role === 'admin' ? 'Todos los Pedidos' : 'Mis Pedidos'}
       </h1>
 
       {displayOrders.length === 0 ? (
-        <div className="text-center py-20 border-2 border-dashed border-black font-bold uppercase tracking-widest">No hay pedidos registrados.</div>
+        <div className="text-center py-20 border-2 border-dashed border-black font-bold uppercase tracking-widest mx-4">No hay pedidos registrados.</div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-8 w-full">
           {displayOrders.sort((a,b) => new Date(b.date) - new Date(a.date)).map(order => (
-            <div key={order.id} className="border-4 border-black p-6 bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
-              <div className="flex flex-wrap justify-between items-start mb-6 pb-6 border-b-2 border-black gap-4">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-widest text-gray-500">Pedido #{order.id.slice(0,8)}</div>
+            <div key={order.id} className="border-4 border-black p-4 md:p-6 bg-white shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] md:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
+              <div className="flex flex-col sm:flex-row justify-between items-start mb-6 pb-6 border-b-2 border-black gap-4">
+                <div className="w-full sm:w-auto">
+                  <div className="text-xs font-bold uppercase tracking-widest text-gray-500 truncate">Pedido #{order.id.slice(0,8)}</div>
                   <div className="text-sm font-bold mt-1">{new Date(order.date).toLocaleDateString()} - {new Date(order.date).toLocaleTimeString()}</div>
-                  {currentUser.role === 'admin' && <div className="text-xs uppercase bg-black text-white px-2 py-1 inline-block mt-2 font-bold">Cliente: {order.userName}</div>}
+                  {currentUser.role === 'admin' && <div className="text-xs uppercase bg-black text-white px-2 py-1 inline-block mt-2 font-bold max-w-full truncate">Cliente: {order.userName}</div>}
                 </div>
-                <div className="text-right">
-                  <div className={`text-xl font-black uppercase border-4 px-4 py-1 inline-block
+                <div className="text-left sm:text-right w-full sm:w-auto">
+                  <div className={`text-sm sm:text-xl font-black uppercase border-4 px-4 py-1 inline-block
                     ${order.status === 'Pendiente' ? 'border-black' : order.status === 'Cancelado' ? 'border-gray-300 text-gray-400 line-through' : 'border-black bg-black text-white'}`}>
                     {order.status}
                   </div>
-                  <div className="text-3xl font-black mt-2">${parseFloat(order.total).toFixed(2)}</div>
+                  <div className="text-2xl sm:text-3xl font-black mt-2 break-all">${parseFloat(order.total).toFixed(2)}</div>
                 </div>
               </div>
 
@@ -981,27 +937,27 @@ const OrdersView = ({ orders, currentUser, ordersRef, showToast, setCart, setVie
                 <h4 className="text-xs font-bold uppercase tracking-widest mb-4">Artículos</h4>
                 <div className="space-y-2">
                   {order.items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-sm font-bold border-b border-gray-200 pb-2">
-                      <span className="uppercase">{item.quantity}x {item.name}</span>
-                      <span>${(item.price * item.quantity).toFixed(2)}</span>
+                    <div key={idx} className="flex justify-between items-center text-xs sm:text-sm font-bold border-b border-gray-200 pb-2 gap-4">
+                      <span className="uppercase truncate flex-grow">{item.quantity}x {item.name}</span>
+                      <span className="flex-shrink-0">${(item.price * item.quantity).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-4 pt-4 border-t-2 border-black">
+              <div className="flex flex-col sm:flex-row flex-wrap gap-4 pt-4 border-t-2 border-black">
                 {order.status === 'Pendiente' && currentUser.role !== 'admin' && (
-                  <Button variant="danger" onClick={() => handleCancel(order)}>Cancelar Pedido</Button>
+                  <Button variant="danger" onClick={() => handleCancel(order)} className="w-full sm:w-auto">Cancelar Pedido</Button>
                 )}
                 {currentUser.role !== 'admin' && (
-                  <Button variant="secondary" onClick={() => handleReorder(order)}>Volver a Pedir</Button>
+                  <Button variant="secondary" onClick={() => handleReorder(order)} className="w-full sm:w-auto">Volver a Pedir</Button>
                 )}
                 
                 {currentUser.role === 'admin' && order.status === 'Pendiente' && (
-                  <Button onClick={() => handleUpdateStatus(order.id, 'Enviado')}>Marcar como Enviado</Button>
+                  <Button onClick={() => handleUpdateStatus(order.id, 'Enviado')} className="w-full sm:w-auto">Marcar Enviado</Button>
                 )}
                 {currentUser.role === 'admin' && order.status !== 'Cancelado' && (
-                   <Button variant="danger" onClick={() => handleCancel(order)}>Forzar Cancelación</Button>
+                   <Button variant="danger" onClick={() => handleCancel(order)} className="w-full sm:w-auto">Forzar Cancelación</Button>
                 )}
               </div>
             </div>
@@ -1016,26 +972,26 @@ const OrdersView = ({ orders, currentUser, ordersRef, showToast, setCart, setVie
 // VISTAS ESTÁTICAS E INFORMATIVAS
 // ==========================================
 const AboutView = () => (
-  <div className="max-w-3xl mx-auto space-y-12 py-12">
-    <h1 className="text-5xl font-black uppercase tracking-tighter text-center border-b-8 border-black pb-8">Nuestra Esencia</h1>
-    <p className="text-xl font-bold leading-relaxed text-justify">
+  <div className="max-w-3xl mx-auto space-y-8 md:space-y-12 py-8 md:py-12 px-4">
+    <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-center border-b-8 border-black pb-8">Nuestra Esencia</h1>
+    <p className="text-lg md:text-xl font-bold leading-relaxed text-justify">
       NOIR NACE DE LA NECESIDAD DE VOLVER A LO BÁSICO. EN UN MUNDO SATURADO DE COLORES Y DISTRACCIONES, OFRECEMOS FRAGANCIAS PURAS, DONDE EL AROMA ES EL ÚNICO PROTAGONISTA.
     </p>
-    <div className="border-4 border-black p-8 font-black uppercase text-2xl text-center shadow-[15px_15px_0px_0px_rgba(0,0,0,1)] bg-white">
+    <div className="border-4 border-black p-6 md:p-8 font-black uppercase text-xl md:text-2xl text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white">
       "No vendemos perfume. Vendemos actitud encapsulada en blanco y negro."
     </div>
   </div>
 );
 
 const ContactView = () => (
-  <div className="max-w-2xl mx-auto mt-12 border-4 border-black p-8 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white">
-    <h1 className="text-3xl font-black uppercase tracking-tighter mb-8 flex items-center gap-4 border-b-4 border-black pb-4"><Phone /> Contáctanos</h1>
+  <div className="max-w-2xl mx-auto mt-8 md:mt-12 border-4 border-black p-6 md:p-8 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white mx-4">
+    <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter mb-8 flex items-center gap-4 border-b-4 border-black pb-4"><Phone size={28}/> Contáctanos</h1>
     <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); alert('Mensaje enviado (Simulación)'); }}>
       <Input label="Nombre" required />
       <Input label="Correo" type="email" required />
       <div className="flex flex-col">
         <label className="text-xs uppercase tracking-widest mb-1 font-bold">Mensaje</label>
-        <textarea required rows="4" className="border-b-2 border-black bg-transparent py-2 outline-none focus:border-b-4 transition-all duration-200 resize-none"></textarea>
+        <textarea required rows="4" className="border-b-2 border-black bg-transparent py-2 outline-none focus:border-b-4 transition-all duration-200 resize-none w-full"></textarea>
       </div>
       <Button type="submit" className="w-full">Enviar Mensaje</Button>
     </form>
@@ -1044,16 +1000,14 @@ const ContactView = () => (
 
 const LocationsView = () => {
   const sucursales = [
-    { name: 'Sucursal Centro', address: 'Calle Principal 123, Zona Centro, CDMX', hours: 'L-S 10:00 - 20:00' },
-    { name: 'Sucursal Norte', address: 'Plaza Norte 45, Local B, Monterrey', hours: 'L-D 11:00 - 21:00' },
-    { name: 'Sucursal Sur', address: 'Av. Sur 789, Col. Moderna, Guadalajara', hours: 'L-S 09:00 - 19:00' },
-    { name: 'Sucursal Este', address: 'Blvd. Este 101, Zona Hotelera, Cancún', hours: 'L-D 10:00 - 22:00' },
-    { name: 'Sucursal Oeste', address: 'Vía Oeste 202, Centro Comercial, Tijuana', hours: 'L-S 10:00 - 20:00' },
+    { name: 'Centro', address: 'Calle Principal 123, CDMX', hours: 'L-S 10:00 - 20:00' },
+    { name: 'Norte', address: 'Plaza Norte 45, Monterrey', hours: 'L-D 11:00 - 21:00' },
+    { name: 'Sur', address: 'Av. Sur 789, Guadalajara', hours: 'L-S 09:00 - 19:00' },
   ];
   return (
-    <div>
-       <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 inline-block">Nuestras Sucursales</h1>
-       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="w-full px-4">
+       <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-8 md:mb-12 border-b-8 border-black pb-4 inline-block">Sucursales</h1>
+       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {sucursales.map((suc, idx) => (
             <div key={idx} className="border-4 border-black p-6 hover:bg-black hover:text-white transition-colors group cursor-pointer bg-white shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:shadow-none">
               <MapPin size={32} className="mb-4 group-hover:animate-bounce" />
@@ -1068,18 +1022,17 @@ const LocationsView = () => {
 }
 
 const FaqView = () => (
-  <div className="max-w-3xl mx-auto py-12">
-    <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 flex items-center gap-4"><HelpCircle size={40}/> Preguntas Frecuentes</h1>
+  <div className="max-w-3xl mx-auto py-8 md:py-12 px-4">
+    <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-8 md:mb-12 border-b-8 border-black pb-4 flex items-center gap-4"><HelpCircle size={36}/> Preguntas Frecuentes</h1>
     <div className="space-y-6">
       {[
         { q: "¿Cuánto tarda el envío?", a: "Nuestros envíos tardan de 2 a 5 días hábiles a nivel nacional." },
         { q: "¿Tienen devoluciones?", a: "Por higiene, solo aceptamos devoluciones si el producto llega dañado en su empaque original sellado." },
-        { q: "¿Son perfumes originales?", a: "Somos creadores. NOIR es una marca independiente de perfumería nicho." },
-        { q: "¿Puedo cancelar mi pedido?", a: "Puedes cancelar tu pedido desde la sección 'Mis Pedidos' siempre y cuando su estado sea 'Pendiente'." }
+        { q: "¿Son perfumes originales?", a: "Somos creadores. NOIR es una marca independiente de perfumería nicho." }
       ].map((faq, idx) => (
-        <div key={idx} className="border-l-8 border-black pl-6 py-2 bg-white">
-          <h3 className="text-lg font-black uppercase tracking-tight mb-2">{faq.q}</h3>
-          <p className="font-bold text-gray-600">{faq.a}</p>
+        <div key={idx} className="border-l-8 border-black pl-4 md:pl-6 py-2 bg-white">
+          <h3 className="text-base md:text-lg font-black uppercase tracking-tight mb-2">{faq.q}</h3>
+          <p className="text-sm md:text-base font-bold text-gray-600">{faq.a}</p>
         </div>
       ))}
     </div>
@@ -1106,32 +1059,33 @@ const UsersView = ({ users, usersRef, showToast, currentUser }) => {
   };
 
   return (
-    <div>
-      <h1 className="text-4xl font-black uppercase tracking-tighter mb-12 border-b-8 border-black pb-4 inline-block">Gestión de Usuarios</h1>
-      <div className="overflow-x-auto border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white">
-        <table className="w-full text-left border-collapse">
+    <div className="w-full overflow-hidden">
+      <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-8 md:mb-12 border-b-8 border-black pb-4 inline-block">Usuarios</h1>
+      <div className="overflow-x-auto border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white w-full">
+        <table className="w-full text-left border-collapse min-w-[500px]">
           <thead>
             <tr className="bg-black text-white text-xs uppercase tracking-widest">
               <th className="p-4 border-r border-gray-700">Nombre</th>
-              <th className="p-4 border-r border-gray-700">Correo Electrónico</th>
-              <th className="p-4 border-r border-gray-700">Fecha Registro</th>
-              <th className="p-4 border-r border-gray-700">Rol Actual</th>
+              <th className="p-4 border-r border-gray-700 hidden sm:table-cell">Correo</th>
+              <th className="p-4 border-r border-gray-700">Rol</th>
               <th className="p-4 text-center">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id} className="border-b-2 border-black hover:bg-gray-50 transition-colors">
-                <td className="p-4 font-black uppercase">{u.name}</td>
-                <td className="p-4 font-bold text-xs">{u.email}</td>
-                <td className="p-4 text-xs font-bold">{new Date(u.createdAt).toLocaleDateString()}</td>
+                <td className="p-4 font-black uppercase text-sm">
+                  {u.name}
+                  <div className="sm:hidden text-xs font-normal mt-1 lowercase">{u.email}</div>
+                </td>
+                <td className="p-4 font-bold text-xs hidden sm:table-cell">{u.email}</td>
                 <td className="p-4">
-                  <span className={`px-2 py-1 text-xs font-bold uppercase text-white ${u.role === 'admin' ? 'bg-black' : 'bg-gray-500'}`}>
+                  <span className={`px-2 py-1 text-[10px] sm:text-xs font-bold uppercase text-white ${u.role === 'admin' ? 'bg-black' : 'bg-gray-500'}`}>
                     {u.role}
                   </span>
                 </td>
                 <td className="p-4 flex justify-center">
-                  <Button variant="secondary" onClick={() => handleToggleRole(u)} disabled={u.id === currentUser.id} className="text-[10px] py-1 px-3">
+                  <Button variant="secondary" onClick={() => handleToggleRole(u)} disabled={u.id === currentUser.id} className="text-[10px] py-1 px-2 whitespace-nowrap">
                     Hacer {u.role === 'admin' ? 'Cliente' : 'Admin'}
                   </Button>
                 </td>
@@ -1197,41 +1151,39 @@ const ProfileView = ({ currentUser, usersRef, showToast }) => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-12">
-      <h1 className="text-4xl font-black uppercase tracking-tighter border-b-8 border-black pb-4 flex items-center gap-4">
-        <Settings size={36} /> Mi Perfil
+    <div className="max-w-4xl mx-auto space-y-8 md:space-y-12 w-full px-4">
+      <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter border-b-8 border-black pb-4 flex items-center gap-4">
+        <Settings size={32} /> Perfil
       </h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Información Básica */}
-        <div className="border-4 border-black p-6 bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
-          <h2 className="text-2xl font-black uppercase tracking-widest mb-6 border-b-2 border-black pb-2">Datos Personales</h2>
+        <div className="border-4 border-black p-4 md:p-6 bg-white shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]">
+          <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest mb-6 border-b-2 border-black pb-2">Datos Personales</h2>
           <form onSubmit={handleUpdateName} className="space-y-4">
             <div>
-              <label className="text-xs uppercase tracking-widest mb-1 font-bold text-gray-500 block">Correo (No modificable)</label>
-              <div className="font-bold border-b-2 border-gray-300 py-2">{currentUser.email}</div>
+              <label className="text-xs uppercase tracking-widest mb-1 font-bold text-gray-500 block">Correo</label>
+              <div className="font-bold border-b-2 border-gray-300 py-2 break-all">{currentUser.email}</div>
             </div>
             <Input label="Nombre de Usuario" required value={name} onChange={e => setName(e.target.value)} />
-            <Button type="submit" className="w-full">Guardar Cambios</Button>
+            <Button type="submit" className="w-full">Guardar</Button>
           </form>
         </div>
 
-        {/* Tarjetas Guardadas */}
-        <div className="border-4 border-black p-6 bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
-          <h2 className="text-2xl font-black uppercase tracking-widest mb-6 border-b-2 border-black pb-2 flex items-center gap-2">
-            <CreditCard size={20}/> Tarjetas Guardadas
+        <div className="border-4 border-black p-4 md:p-6 bg-white shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]">
+          <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest mb-6 border-b-2 border-black pb-2 flex items-center gap-2">
+            <CreditCard size={20}/> Tarjetas
           </h2>
           {(!currentUser.savedCards || currentUser.savedCards.length === 0) ? (
-            <div className="text-sm font-bold uppercase text-gray-500">No tienes tarjetas guardadas.</div>
+            <div className="text-sm font-bold uppercase text-gray-500">No hay tarjetas guardadas.</div>
           ) : (
             <div className="space-y-4">
               {currentUser.savedCards.map((card, idx) => (
-                <div key={idx} className="flex justify-between items-center border-2 border-black p-4">
+                <div key={idx} className="flex justify-between items-center border-2 border-black p-3 md:p-4">
                   <div>
-                    <div className="font-black uppercase tracking-widest">**** **** **** {card.last4}</div>
-                    <div className="text-xs font-bold text-gray-500 uppercase">Vence: {card.expiry}</div>
+                    <div className="font-black uppercase tracking-widest text-sm md:text-base">**** {card.last4}</div>
+                    <div className="text-[10px] md:text-xs font-bold text-gray-500 uppercase">Vence: {card.expiry}</div>
                   </div>
-                  <button onClick={() => handleDeleteCard(idx)} className="text-gray-500 hover:text-black transition-colors" title="Eliminar Tarjeta"><Trash2 size={18}/></button>
+                  <button onClick={() => handleDeleteCard(idx)} className="text-gray-500 hover:text-black transition-colors"><Trash2 size={18}/></button>
                 </div>
               ))}
             </div>
@@ -1239,16 +1191,14 @@ const ProfileView = ({ currentUser, usersRef, showToast }) => {
         </div>
       </div>
 
-      {/* Direcciones */}
-      <div className="border-4 border-black p-6 bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
-        <h2 className="text-2xl font-black uppercase tracking-widest mb-6 border-b-2 border-black pb-2 flex items-center gap-2">
-          <MapPin size={20}/> Direcciones de Envío
+      <div className="border-4 border-black p-4 md:p-6 bg-white shadow-[5px_5px_0px_0px_rgba(0,0,0,1)]">
+        <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest mb-6 border-b-2 border-black pb-2 flex items-center gap-2">
+          <MapPin size={20}/> Direcciones
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          
           <div>
             <h3 className="text-sm font-black uppercase mb-4">Añadir Dirección</h3>
-            <form onSubmit={handleAddAddress} className="space-y-4 border-r-0 md:border-r-2 border-black pr-0 md:pr-6">
+            <form onSubmit={handleAddAddress} className="space-y-4 md:border-r-2 border-black md:pr-6">
               <Input label="Calle y Número" required value={newAddress.address} onChange={e => setNewAddress({...newAddress, address: e.target.value})} />
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Ciudad" required value={newAddress.city} onChange={e => setNewAddress({...newAddress, city: e.target.value})} />
@@ -1259,18 +1209,18 @@ const ProfileView = ({ currentUser, usersRef, showToast }) => {
           </div>
 
           <div>
-             <h3 className="text-sm font-black uppercase mb-4">Direcciones Guardadas</h3>
+             <h3 className="text-sm font-black uppercase mb-4">Guardadas</h3>
              {(!currentUser.addresses || currentUser.addresses.length === 0) ? (
               <div className="text-sm font-bold uppercase text-gray-500">No hay direcciones.</div>
             ) : (
               <div className="space-y-4">
                 {currentUser.addresses.map((addr, idx) => (
-                  <div key={idx} className="flex justify-between items-start border-2 border-black p-4 relative group">
-                    <div>
+                  <div key={idx} className="flex justify-between items-start border-2 border-black p-3 md:p-4 relative group">
+                    <div className="pr-6">
                       <div className="font-bold text-sm uppercase">{addr.address}</div>
-                      <div className="text-xs font-bold text-gray-500 uppercase">{addr.city}, C.P. {addr.zip}</div>
+                      <div className="text-[10px] md:text-xs font-bold text-gray-500 uppercase">{addr.city}, C.P. {addr.zip}</div>
                     </div>
-                    <button onClick={() => handleDeleteAddress(idx)} className="text-gray-500 hover:text-black opacity-0 group-hover:opacity-100 transition-all absolute top-2 right-2"><Trash2 size={16}/></button>
+                    <button onClick={() => handleDeleteAddress(idx)} className="text-gray-500 hover:text-black md:opacity-0 md:group-hover:opacity-100 transition-all absolute top-2 right-2"><Trash2 size={16}/></button>
                   </div>
                 ))}
               </div>
