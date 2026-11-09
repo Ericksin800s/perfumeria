@@ -391,7 +391,7 @@
                                 {!isLogin && (
                                     <label className="flex items-center space-x-2 cursor-pointer mt-4 group">
                                         <input type="checkbox" className="appearance-none w-5 h-5 border-2 border-black checked:bg-black cursor-pointer transition-colors" checked={formData.reqAdmin} onChange={e => setFormData({...formData, reqAdmin: e.target.checked})} />
-                                        <span className="text-xs uppercase font-bold tracking-widest text-gray-500 group-hover:text-black">Ser Administrador (Demo)</span>
+                                        
                                     </label>
                                 )}
                                 <Button type="submit" className="w-full text-lg py-4 mt-8">{isLogin ? 'Entrar' : 'Continuar'}</Button>
