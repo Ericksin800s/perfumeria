@@ -62,17 +62,12 @@
             const db = getFirestore(app);
 
             // ==========================================
-            // CONFIGURACIÓN DE EMAILJS (CON DIAGNÓSTICO)
+            // CONFIGURACIÓN DE EMAILJS
             // ==========================================
             const EMAILJS_SERVICE_ID = "service_flg76cj";
-            
-            // 👇 REVISA ESTO: Ve a EmailJS > Email Templates > Settings y asegúrate 
-            // de que este ID sea exactamente el de tu plantilla "erick".
             const EMAILJS_TEMPLATE_ID = "template_otnza77"; 
-            
             const EMAILJS_PUBLIC_KEY = "52ikRo80iqzF-e_Dx";
 
-            // Pasamos showToast como parámetro para poder ver los errores en pantalla
             const enviarCorreoNotificacion = async (nombreUsuario, correoUsuario, tipo, detallesExtra = "", showToast = null) => {
                 const templateParams = {
                     to_name: nombreUsuario,
@@ -98,15 +93,11 @@
                     } else {
                         const errorText = await response.text();
                         console.error("Error devuelto por EmailJS:", errorText);
-                        if (showToast) {
-                            showToast(`⚠️ Error EmailJS: ${errorText}`);
-                        }
+                        if (showToast) showToast(`⚠️ Error EmailJS: ${errorText}`);
                     }
                 } catch (err) {
                     console.error("Error de red al intentar enviar el correo", err);
-                    if (showToast) {
-                        showToast(`⚠️ Error de red al contactar EmailJS.`);
-                    }
+                    if (showToast) showToast(`⚠️ Error de red al contactar EmailJS.`);
                 }
             };
 
@@ -331,7 +322,7 @@
                             <footer className="border-t-4 border-black py-12 text-center w-full mt-auto">
                                 <div className="text-3xl font-black uppercase tracking-tighter mb-4">NOIR</div>
                                 <p className="text-xs font-bold uppercase tracking-widest text-gray-500 px-4">
-                                    La esencia de la elegancia en blanco y negro. &copy; 2026.
+                                    Tu distribuidor de fragancias en blanco y negro. &copy; 2026.
                                 </p>
                             </footer>
                         )}
@@ -347,7 +338,7 @@
                 const [step, setStep] = useState('form'); 
                 const [verificationCode, setVerificationCode] = useState('');
                 const [inputCode, setInputCode] = useState('');
-                const [formData, setFormData] = useState({ email: '', password: '', name: '', reqAdmin: false });
+                const [formData, setFormData] = useState({ email: '', password: '', name: '' });
                 const [error, setError] = useState('');
 
                 const handleSubmitForm = async (e) => {
@@ -363,7 +354,6 @@
                         setVerificationCode(code);
                         setStep('verify');
                         
-                        // Usamos showToast como parámetro para ver errores
                         enviarCorreoNotificacion(formData.name || 'Usuario', formData.email, "Código de Verificación", `Tu código en NOIR es: ${code}`, showToast);
                         showToast(`¡Código enviado! Revisa tu bandeja de entrada o spam.`);
                     }
@@ -372,7 +362,8 @@
                 const handleVerifyCode = async (e) => {
                     e.preventDefault();
                     if (inputCode !== verificationCode) return setError('Código incorrecto. Intenta nuevamente.');
-                    const newUser = { email: formData.email, password: formData.password, name: formData.name, role: formData.reqAdmin ? 'admin' : 'customer', createdAt: new Date().toISOString(), addresses: [], savedCards: [] };
+                    // Se quitó por completo la asignación de administrador, todos son customer
+                    const newUser = { email: formData.email, password: formData.password, name: formData.name, role: 'customer', createdAt: new Date().toISOString(), addresses: [], savedCards: [] };
                     try {
                         const docRef = await addDoc(usersRef, newUser);
                         onLogin({ id: docRef.id, ...newUser });
@@ -388,12 +379,7 @@
                                 {!isLogin && <Input label="Nombre Completo" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />}
                                 <Input label="Correo Electrónico" type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                                 <Input label="Contraseña" type="password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
-                                {!isLogin && (
-                                    <label className="flex items-center space-x-2 cursor-pointer mt-4 group">
-                                        <input type="checkbox" className="appearance-none w-5 h-5 border-2 border-black checked:bg-black cursor-pointer transition-colors" checked={formData.reqAdmin} onChange={e => setFormData({...formData, reqAdmin: e.target.checked})} />
-                                        
-                                    </label>
-                                )}
+                                
                                 <Button type="submit" className="w-full text-lg py-4 mt-8">{isLogin ? 'Entrar' : 'Continuar'}</Button>
                             </form>
                         ) : (
@@ -418,8 +404,8 @@
             const HomeView = ({ setView }) => (
                 <div className="flex flex-col items-center justify-center py-10 md:py-20 text-center space-y-12">
                     <div className="space-y-4 max-w-2xl px-4">
-                        <h1 className="text-5xl md:text-8xl font-black uppercase tracking-tighter leading-tight md:leading-none">Puro.<br/>Intenso.<br/>Noir.</h1>
-                        <p className="text-sm md:text-base font-bold uppercase tracking-widest text-gray-600 pt-8">Descubre nuestra colección exclusiva de fragancias minimalistas.</p>
+                        <h1 className="text-5xl md:text-8xl font-black uppercase tracking-tighter leading-tight md:leading-none">Las Mejores<br/>Marcas.<br/>Estilo Noir.</h1>
+                        <p className="text-sm md:text-base font-bold uppercase tracking-widest text-gray-600 pt-8">Descubre nuestra selección de las mejores fragancias internacionales. Tu distribuidor de confianza, sin distracciones.</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mt-12 px-4">
                         <div onClick={() => setView('catalog')} className="group border-4 border-black p-8 md:p-12 cursor-pointer hover:bg-black hover:text-white transition-colors duration-500 flex flex-col items-center justify-center aspect-square">
@@ -793,8 +779,11 @@
                 <div className="max-w-3xl mx-auto space-y-8 md:space-y-12 py-8 md:py-12 px-4">
                     <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-center border-b-8 border-black pb-8">Nuestra Esencia</h1>
                     <p className="text-lg md:text-xl font-bold leading-relaxed text-justify">
-                        NOIR NACE DE LA NECESIDAD DE VOLVER A LO BÁSICO. EN UN MUNDO SATURADO DE COLORES Y DISTRACCIONES, OFRECEMOS FRAGANCIAS PURAS, DONDE EL AROMA ES EL ÚNICO PROTAGONISTA.
+                        NOIR NACE DE LA PASIÓN POR LA ALTA PERFUMERÍA. COMO DISTRIBUIDORES DE LAS MEJORES MARCAS INTERNACIONALES, OFRECEMOS UNA SELECCIÓN EXCLUSIVA DONDE EL AROMA ES EL ÚNICO PROTAGONISTA.
                     </p>
+                    <div className="border-4 border-black p-6 md:p-8 font-black uppercase text-xl md:text-2xl text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] bg-white">
+                        "No solo vendemos perfumes. Curamos las mejores fragancias del mundo bajo una estética absoluta en blanco y negro."
+                    </div>
                 </div>
             );
 
@@ -840,7 +829,11 @@
                 <div className="max-w-3xl mx-auto py-8 md:py-12 px-4">
                     <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter mb-8 md:mb-12 border-b-8 border-black pb-4 flex items-center gap-4"><i className="fa-solid fa-circle-question text-5xl"></i> FAQ</h1>
                     <div className="space-y-6">
-                        {[ { q: "¿Cuánto tarda el envío?", a: "Tardan de 2 a 5 días hábiles a nivel nacional." }, { q: "¿Tienen devoluciones?", a: "Solo aceptamos devoluciones si el producto llega dañado." }].map((faq, idx) => (
+                        {[ 
+                            { q: "¿Cuánto tarda el envío?", a: "Tardan de 2 a 5 días hábiles a nivel nacional." }, 
+                            { q: "¿Tienen devoluciones?", a: "Solo aceptamos devoluciones si el producto llega dañado o abierto durante el tránsito." },
+                            { q: "¿Son perfumes originales?", a: "100% originales. Somos distribuidores autorizados de las casas perfumeras más reconocidas a nivel mundial." }
+                        ].map((faq, idx) => (
                             <div key={idx} className="border-l-8 border-black pl-4 md:pl-6 py-2 bg-white">
                                 <h3 className="text-base md:text-lg font-black uppercase tracking-tight mb-2">{faq.q}</h3>
                                 <p className="text-sm md:text-base font-bold text-gray-600">{faq.a}</p>
